@@ -29,6 +29,12 @@ import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
 import Control.Monad.Reader.Class (ask)
 import IDE.TextEditor
 
+import IDE.CompletionHelper
+    (getIsWordChar, replaceWordStart, findWordStart, findWordEnd, longestCommonPrefix)
+
+import qualified IDE.ArgumentHelper as ArgumentHelper
+
+
 complete :: EditorView -> Bool -> IDEAction
 complete sourceView always = do
     currentState'    <- readIDE currentState
@@ -60,25 +66,6 @@ setCompletionSize (x, y) | x > 10 && y > 10 = do
     modifyIDE_ $ \ide -> ide{completion = ((x, y), completion)}
 setCompletionSize _ = return ()
 
-getIsWordChar :: EditorView -> IDEM (Char -> Bool)
-getIsWordChar sourceView = do
-    ideR <- ask
-    buffer <- getBuffer sourceView
-    (_, end) <- getSelectionBounds buffer
-    sol <- backwardToLineStartC end
-    eol <- forwardToLineEndC end
-    line <- getSlice buffer sol eol False
-
-    let isImport = "import " `isPrefixOf` line
-        isIdent a = isAlphaNum a || a == '\'' || a == '_'  || (isImport && a == '.')
-        isOp    a = isSymbol   a || a == ':'  || a == '\\' || a == '*' || a == '/' || a == '-'
-                                 || a == '!'  || a == '@'  || a == '%' || a == '&' || a == '?'
-    prev <- backwardCharC end
-    prevChar <- getChar prev
-    case prevChar of
-        Just prevChar | isIdent prevChar -> return isIdent
-        Just prevChar | isOp    prevChar -> return isOp
-        _                                -> return $ const False
 
 initCompletion :: EditorView -> Bool -> IDEAction
 initCompletion sourceView always = do
@@ -189,7 +176,16 @@ addEventHandling window sourceView tree store isWordChar always = do
                     maybeRow <- liftIO $ getRow tree
                     case maybeRow of
                         Just row -> (do
+                            -- get activated row first
+                            functionName <- liftIO $ listStoreGetValue store row
                             liftIO $ treeViewRowActivated tree [row] column
+
+                            -- open argumentHelper
+                            liftIO $ putStrLn "opening argumentHelper"
+                            --argumentHelperData <- readIDE argumentHelper
+                            completionWindowPos <- liftIO $ windowGetPosition window
+                            ArgumentHelper.initArgumentHelper functionName sourceView completionWindowPos
+
                             return True
                             )
                         Nothing -> (do
@@ -288,11 +284,6 @@ addEventHandling window sourceView tree store isWordChar always = do
             Nothing     -> return False
 
     idSelected <- liftIO $ tree `onRowActivated` (\treePath column -> (do
-        -- open argumentHelper
---        liftIO $ putStrLn "opening argumentHelper"
---        argumentHelperData <- readIDE argumentHelper
---        initArgumentHelper argumentHelperData position
-
         reflectIDE (withWord store treePath (replaceWordStart sourceView isWordChar)) ideR
         liftIO $ postGUIAsync $ reflectIDE cancel ideR))
 
@@ -308,22 +299,6 @@ withWord store treePath f = (do
        _ -> return ()
    )
 
-replaceWordStart :: EditorView -> (Char -> Bool) -> String -> IDEM ()
-replaceWordStart sourceView isWordChar name = do
-    buffer <- getBuffer sourceView
-    (selStart, selEnd) <- getSelectionBounds buffer
-    start <- findWordStart selStart isWordChar
-    wordStart <- getText buffer start selEnd True
-    case stripPrefix wordStart name of
-        Just extra -> do
-            end <- findWordEnd selEnd isWordChar
-            wordFinish <- getText buffer selEnd end True
-            case (wordFinish, stripPrefix wordFinish extra) of
-                (_:_,Just extra2) -> do
-                    selectRange buffer end end
-                    insert buffer end extra2
-                _                 -> insert buffer selEnd extra
-        Nothing    -> return ()
 
 cancelCompletion :: Window -> TreeView -> ListStore String -> Connections -> IDEAction
 cancelCompletion window tree store connections = do
@@ -358,22 +333,6 @@ tryToUpdateOptions window tree store sourceView selectLCP isWordChar always = do
                 return ()
             return True
 
-findWordStart :: EditorIter -> (Char -> Bool) -> IDEM EditorIter
-findWordStart iter isWordChar = do
-    maybeWS <- backwardFindCharC iter (not . isWordChar) Nothing
-    case maybeWS of
-        Nothing -> atOffset iter 0
-        Just ws -> forwardCharC ws
-
-findWordEnd :: EditorIter -> (Char -> Bool) -> IDEM EditorIter
-findWordEnd iter isWordChar = do
-    maybeWE <- forwardFindCharC iter (not . isWordChar) Nothing
-    case maybeWE of
-        Nothing -> forwardToLineEndC iter
-        Just we -> return we
-
-longestCommonPrefix (x:xs) (y:ys) | x == y = x : longestCommonPrefix xs ys
-longestCommonPrefix _ _ = []
 
 processResults :: Window -> TreeView -> ListStore String -> EditorView -> String -> [String]
                -> Bool -> (Char -> Bool) -> Bool -> IDEAction

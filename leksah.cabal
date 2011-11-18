@@ -108,7 +108,7 @@ library
                    ghc >=6.10.1 && <7.1, strict >= 0.3.2 && <0.4, vcsgui -any, vcswrapper -any
 
     exposed-modules:
-        IDE.Leksah IDE.Completion IDE.ImportTool
+        IDE.Leksah IDE.Completion IDE.CompletionHelper IDE.ArgumentHelper IDE.ImportTool
         IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils
         IDE.Package IDE.YiConfig IDE.OSX
         IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper
