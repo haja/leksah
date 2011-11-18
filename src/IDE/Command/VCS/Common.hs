@@ -14,15 +14,18 @@
 module IDE.Command.VCS.Common (
     createActionFromContext
     ,setupRepoAction
+    ,noOpenWorkspace
 ) where
 
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
+import qualified Graphics.UI.Gtk as Gtk
 
 import IDE.Core.Types
 import IDE.Core.State
 import IDE.Command.VCS.Common.Workspaces
 import IDE.Workspaces(workspaceSetVCSConfig)
+import IDE.Utils.GUIUtils
 
 
 
@@ -42,14 +45,12 @@ setupRepoAction = do
     case mbWorkspace of
 
         Just workspace -> do
-                             let config = case vcsConfig workspace of
-                                                Nothing -> Nothing
-                                                Just (vcs,conf) -> Just (vcs,conf)
+                             let config = vcsConfig workspace
                              liftIO $ VCSGUI.showSetupConfigGUI config (callback ide)
 
         Nothing -> noOpenWorkspace
     where
-        callback :: IDERef -> Maybe (VCS.VCSType, VCS.Config) -> IO()
+        callback :: IDERef -> Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool) -> IO()
         callback ideRef mbConfig = do
                 -- set config in workspace
                 runReaderT (workspaceSetVCSConfig mbConfig) ideRef
@@ -70,14 +71,12 @@ createActionFromContext vcsAction = do
              let mbConfig = vcsConfig workspace
              case mbConfig of
                 Nothing -> liftIO $ VCSGUI.showErrorGUI "No active repository!"
-                Just (_,config) -> liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs config $ vcsAction
+                Just (_,config, _) -> liftIO $ VCSGUI.defaultVCSExceptionHandler $ VCS.runVcs config $ vcsAction
         Nothing -> noOpenWorkspace
 
 
---TODO stub, proper error handling
 noOpenWorkspace = do
-                    liftIO $ putStrLn "No open workspace"
-                    return () --TODO show error message (use ..Common for this)
+                    liftIO $ showDialog "No open workspace. You must have an open workspace to be able to set a repository." Gtk.MessageError
 
 
 

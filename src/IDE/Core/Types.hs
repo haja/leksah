@@ -76,6 +76,8 @@ module IDE.Core.Types (
 ,   ModuleDescrCache
 
 ,   CompletionWindow(..)
+,   LogLaunch(..)
+,   LogLaunchData(..)
 ,   LogTag(..)
 ,   GUIHistory
 ,   GUIHistory'(..)
@@ -87,7 +89,7 @@ module IDE.Core.Types (
 import qualified IDE.YiConfig as Yi
 import Graphics.UI.Gtk
        (Window(..), KeyVal(..), Color(..), Menu(..), TreeView(..),
-        ListStore(..), Toolbar(..))
+        ListStore(..), Toolbar(..), TextView(..), ScrolledWindow(..), TextBuffer(..))
 import Control.Monad.Reader
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
@@ -116,8 +118,11 @@ import IDE.StrippedPrefs(RetrieveStrategy)
 import System.IO (Handle)
 import Distribution.Text(disp)
 import Text.PrettyPrint (render)
+import Data.Typeable
+import qualified Data.Map as Map
 
 import qualified VCSWrapper.Common as VCS
+import qualified VCSGui.Common as VCSGUI
 
 -- ---------------------------------------------------------------------
 -- IDE State
@@ -155,7 +160,8 @@ data IDE            =  IDE {
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
-,   vcsData         ::   (Maybe MergeId, Maybe (Maybe String)) --TODO this data should be deleted when workspace switches
+,   vcsData         ::   (Maybe MergeId, Maybe (Maybe String))
+,   logLaunches     ::   Map.Map String LogLaunchData
 } --deriving Show
 
 --
@@ -341,7 +347,7 @@ data Workspace = Workspace {
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]
-,   vcsConfig       ::   Maybe (VCS.VCSType, VCS.Config)       -- ^ Configuration for a Version Control System
+,   vcsConfig       ::   Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool)       -- ^ Configuration for a Version Control System
 } deriving Show
 
 -- ---------------------------------------------------------------------
@@ -425,6 +431,16 @@ instance Ord Modifier
 --
 -- | Other types
 --
+
+data LogLaunchData = LogLaunchData {
+    logLaunch :: LogLaunch
+,   mbPid :: Maybe ProcessHandle
+}
+
+data LogLaunch = LogLaunch {
+    logBuffer   :: TextBuffer
+} deriving Typeable
+
 data LogRefType = WarningRef | ErrorRef | BreakpointRef | ContextRef deriving (Eq, Show)
 
 data LogRef = LogRef {
