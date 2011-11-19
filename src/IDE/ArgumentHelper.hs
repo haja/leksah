@@ -54,7 +54,7 @@ initArgumentHelper functionName sourceView (x, y) = do
 --
 openNewWindow :: IDEM (Window)
 openNewWindow = do
-    let width = 300
+    let width = 400
     let height = 150
 
 
@@ -94,8 +94,11 @@ registerHandler window sourceView = do
 addContent :: Window -> String -> IDEAction
 addContent window functionName = do
     prefs               <- readIDE prefs
-    descriptionBuffer   <- newGtkBuffer Nothing functionName
+    description         <- getDescription functionName
+    descriptionBuffer   <- newGtkBuffer Nothing description
     descriptionView     <- newView descriptionBuffer (textviewFont prefs)
+
+    --TODO upadte window size on content length
 
     descriptionScrolledWindow <- getScrolledWindow descriptionView
     liftIO $ containerAdd window descriptionScrolledWindow
