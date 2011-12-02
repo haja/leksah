@@ -53,7 +53,7 @@ cancel = do
     currentState'    <- readIDE currentState
     (_, completion') <- readIDE completion
     case (currentState',completion') of
-        (IsCompleting conn , Just (CompletionWindow window tv st)) ->
+        (IsCompleting conn , Just (CompletionWindow window tv st)) -> do
             cancelCompletion window tv st conn
         _            -> return ()
 
@@ -326,7 +326,7 @@ tryToUpdateOptions window tree store sourceView selectLCP isWordChar always = do
         then return False
         else do
             wordStart <- getText buffer start end True
-            liftIO $ postGUIAsync $ do
+            liftIO $ do  -- dont use postGUIAsync - it causes bugs related to several repeated tryToUpdateOptions in thread
                 reflectIDE (do
                     options <- getCompletionOptions wordStart
                     processResults window tree store sourceView wordStart options selectLCP isWordChar always) ideR

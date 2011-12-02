@@ -33,6 +33,7 @@ module IDE.Core.Types (
 ,   IDEAction
 ,   IDEEvent(..)
 ,   liftIDE
+,   (?>>=)
 
 ,   WorkspaceM
 ,   WorkspaceAction
@@ -48,6 +49,7 @@ module IDE.Core.Types (
 
 ,   IDEPackage(..)
 ,   Workspace(..)
+,   VCSConf
 
 ,   ActionDescr(..)
 ,   ActionString
@@ -89,7 +91,7 @@ module IDE.Core.Types (
 import qualified IDE.YiConfig as Yi
 import Graphics.UI.Gtk
        (Window(..), KeyVal(..), Color(..), Menu(..), TreeView(..),
-        ListStore(..), Toolbar(..), TextView(..), ScrolledWindow(..), TextBuffer(..))
+        ListStore(..), Toolbar(..), TextView(..), ScrolledWindow(..), TextBuffer(..), MenuItem)
 import Control.Monad.Reader
 import Data.Unique (newUnique, Unique(..))
 import Graphics.UI.Frame.Panes
@@ -106,7 +108,11 @@ import Graphics.UI.Gtk.Gdk.Enums (Modifier(..))
 import Graphics.UI.Gtk.ActionMenuToolbar.UIManager(MergeId)
 import System.Time (ClockTime(..))
 import Distribution.Simple (Extension(..))
+#ifdef MIN_VERSION_process_leksah
 import IDE.System.Process (ProcessHandle(..))
+#else
+import System.Process (ProcessHandle(..))
+#endif
 import IDE.Utils.Tool (ToolState(..))
 import Data.IORef (writeIORef, readIORef, IORef(..))
 import Numeric (showHex)
@@ -160,7 +166,7 @@ data IDE            =  IDE {
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
-,   vcsData         ::   (Maybe MergeId, Maybe (Maybe String))
+,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe String)) -- menus for packages, password
 ,   logLaunches     ::   Map.Map String LogLaunchData
 } --deriving Show
 
@@ -196,6 +202,13 @@ data IDEState =
 
 liftIDE :: IDEM a -> WorkspaceM a
 liftIDE = lift
+
+(?>>=) :: Monad m => (m (Maybe a)) -> (a -> m ()) -> m ()
+a ?>>= b = do
+    mA <- a
+    case mA of
+        Just v -> b v
+        Nothing -> return ()
 
 -- ---------------------------------------------------------------------
 -- Monad for functions that need an open workspace
@@ -237,6 +250,9 @@ data IDEEvent  =
     |   RecordHistory GUIHistory
     |   Sensitivity [(SensitivityMask,Bool)]
     |   SearchMeta String
+    |   StartFindInitial
+    |   SearchSymbolDialog String
+    |   GotoDefinition Descr
     |   LoadSession FilePath
     |   SaveSession FilePath
     |   UpdateRecent
@@ -259,6 +275,9 @@ instance Event IDEEvent String where
     getSelector (RecordHistory _)       =   "RecordHistory"
     getSelector (Sensitivity _)         =   "Sensitivity"
     getSelector (SearchMeta _)          =   "SearchMeta"
+    getSelector (StartFindInitial)      =   "StartFindInitial"
+    getSelector (SearchSymbolDialog _)  =   "SearchSymbolDialog"
+    getSelector (GotoDefinition _)      =   "GotoDefinition"
     getSelector (LoadSession _)         =   "LoadSession"
     getSelector (SaveSession _)         =   "SaveSession"
     getSelector UpdateRecent            =   "UpdateRecent"
@@ -282,6 +301,9 @@ instance EventSource IDERef IDEEvent IDEM String where
     canTriggerEvent _ "Sensitivity"         = True
     canTriggerEvent _ "DescrChoice"         = True
     canTriggerEvent _ "SearchMeta"          = True
+    canTriggerEvent _ "StartFindInitial"    = True
+    canTriggerEvent _ "SearchSymbolDialog"  = True
+    canTriggerEvent _ "GotoDefinition"      = True
     canTriggerEvent _ "LoadSession"         = True
     canTriggerEvent _ "SaveSession"         = True
     canTriggerEvent _ "UpdateRecent"        = True
@@ -314,12 +336,15 @@ data IDEPackage     =   IDEPackage {
 ,   ipdCabalFile       ::   FilePath
 ,   ipdDepends         ::   [Dependency]
 ,   ipdModules         ::   Set ModuleName
+,   ipdHasLibs         ::   Bool
+,   ipdTests           ::   [String]
 ,   ipdMain            ::   [FilePath]
 ,   ipdExtraSrcs       ::   Set FilePath
 ,   ipdSrcDirs         ::   [FilePath]
 ,   ipdExtensions      ::   [Extension]
 ,   ipdConfigFlags     ::   [String]
 ,   ipdBuildFlags      ::   [String]
+,   ipdTestFlags       ::   [String]
 ,   ipdHaddockFlags    ::   [String]
 ,   ipdExeFlags        ::   [String]
 ,   ipdInstallFlags    ::   [String]
@@ -347,7 +372,7 @@ data Workspace = Workspace {
 ,   wsPackagesFiles ::   [FilePath]
 ,   wsActivePackFile::   Maybe FilePath
 ,   wsNobuildPack   ::   [IDEPackage]
-,   vcsConfig       ::   Maybe (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool)       -- ^ Configuration for a Version Control System
+,   packageVcsConf  ::   Map FilePath VCSConf -- ^ (FilePath to package, Version-Control-System Configuration)
 } deriving Show
 
 -- ---------------------------------------------------------------------
@@ -404,6 +429,7 @@ data Prefs = Prefs {
     ,   docuSearchURL       ::   String
     ,   completeRestricted  ::   Bool
     ,   saveAllBeforeBuild  ::   Bool
+    ,   jumpToWarnings      ::   Bool
     ,   backgroundBuild     ::   Bool
     ,   makeMode            ::   Bool
     ,   singleBuildWithoutLinking :: Bool
@@ -425,8 +451,13 @@ data Prefs = Prefs {
 data SearchHint = Forward | Backward | Insert | Delete | Initial
     deriving (Eq)
 
+#ifndef LEKSAH_WITH_YI
 instance Ord Modifier
     where compare a b = compare (fromEnum a) (fromEnum b)
+#endif
+
+-- Version-Control-System Configuration
+type VCSConf = (VCS.VCSType, VCS.Config, Maybe VCSGUI.MergeTool)
 
 --
 -- | Other types
