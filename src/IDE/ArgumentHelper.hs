@@ -19,13 +19,16 @@ import Prelude hiding(getChar, getLine)
 
 import Data.List as List (stripPrefix, isPrefixOf, filter)
 import Data.Char
+import Data.Maybe (fromJust)
 import Data.IORef
 import Control.Monad
 import Control.Monad.Trans (liftIO)
-import Graphics.UI.Gtk as Gtk hiding(onKeyPress, onKeyRelease)
+import Graphics.UI.Gtk.SourceView (SourceView)
+import qualified Graphics.UI.Gtk as Gtk hiding(onKeyPress, onKeyRelease)
+import Graphics.UI.Gtk (AttrOp (..)) -- import := unqualified for convenience
 import Graphics.UI.Gtk.Gdk.EventM as Gtk
 import IDE.Core.State
-import IDE.Metainfo.Provider(getDescription,getCompletionOptions)
+import qualified IDE.Metainfo.Provider as MetaInfoProvider(getDescription)
 import Control.Monad.Reader.Class (ask)
 import IDE.TextEditor
 
@@ -35,51 +38,54 @@ import IDE.CompletionHelper
 
 
 
---initArgumentHelper :: ((Int, Int), Maybe ArgumentHelperWindow) -> EditorView -> (Int, Int) -> IDEAction
---initArgumentHelper ((defaultHeight, defaultWidth), Nothing) sourceView (x, y) = do
-initArgumentHelper :: String -> EditorView -> (Int, Int) -> IDEAction
+-- | Open a new argument helper popup window.
+initArgumentHelper :: String -- ^ Function name
+        -> EditorView
+        -> (Int, Int) -- ^ Top left position of the popup
+        -> IDEAction
 initArgumentHelper functionName sourceView (x, y) = do
     liftIO $ putStrLn $ "functionName: " ++ functionName
     window <- openNewWindow
     registerHandler window sourceView
     addContent window functionName
 
-
-    liftIO $ windowMove window x y
-    liftIO $ widgetShowAll window
+    liftIO $ Gtk.windowMove window x y
+    liftIO $ Gtk.widgetShowAll window
 
 
 --
 -- | open a new popup window
 --
-openNewWindow :: IDEM (Window)
+openNewWindow :: IDEM (Gtk.Window)
 openNewWindow = do
-    let width = 400
+    let width = 600
     let height = 150
 
 
     windows    <- getWindows
-    window     <- liftIO windowNewPopup
-    liftIO $ windowSetTransientFor window (head windows)
-    liftIO $ set window [
-                 windowTypeHint      := WindowTypeHintUtility,
-                 windowDecorated     := False,
-                 windowResizable     := True,
-                 windowDefaultWidth  := width,
-                 windowDefaultHeight := height]
-    liftIO $ containerSetBorderWidth window 3
+    window     <- liftIO Gtk.windowNewPopup
+    liftIO $ Gtk.windowSetTransientFor window (head windows)
+    liftIO $ Gtk.set window [
+                 Gtk.windowTypeHint      := Gtk.WindowTypeHintUtility,
+                 Gtk.windowDecorated     := False,
+                 Gtk.windowResizable     := True,
+                 Gtk.windowDefaultWidth  := width,
+                 Gtk.windowDefaultHeight := height
+                 ]
+    liftIO $ Gtk.containerSetBorderWidth window 1
     return window
 
 --
+-- TODO register mouseclicks to close window
 -- | Register keys to be handled by the window.
 --
-registerHandler :: Window -> EditorView -> IDEAction
+registerHandler :: Gtk.Window -> EditorView -> IDEAction
 registerHandler window sourceView = do
     sourceView `onKeyPress` \name modifier keyVal -> do
         let closeIfVisible = (do
-                visible <- liftIO $ get window widgetVisible
+                visible <- liftIO $ Gtk.get window Gtk.widgetVisible
                 if visible then (do
-                        liftIO $ widgetDestroy window
+                        liftIO $ Gtk.widgetDestroy window
                         return True
                     )
                     else return False
@@ -87,21 +93,38 @@ registerHandler window sourceView = do
 
         case (name, modifier) of
             ("Return", _) -> closeIfVisible
+            ("Escape", _) -> closeIfVisible
+            -- don't signal that these keys have been handled:
+            ("Up", _) -> closeIfVisible >> return False
+            ("Down", _) -> closeIfVisible >> return False
+            ("Control_L", _) -> closeIfVisible >> return False
+            ("Control_R", _) -> closeIfVisible >> return False
             (_, _) -> return False
     return ()
 
 
-addContent :: Window -> String -> IDEAction
+addContent :: Gtk.Window -> String -> IDEAction
 addContent window functionName = do
     prefs               <- readIDE prefs
-    description         <- getDescription functionName
+    description         <- MetaInfoProvider.getDescription functionName
     descriptionBuffer   <- newGtkBuffer Nothing description
     descriptionView     <- newView descriptionBuffer (textviewFont prefs)
-
-    --TODO upadte window size on content length
+    _ <- if (Nothing /= (getSourceView descriptionView)) then do
+            --TODO upadte window size on content length (doesn't work yet)
+            (heigth, width)     <- liftIO $ Gtk.widgetGetSize $ fromJust $ getSourceView descriptionView
+            liftIO $ putStrLn $ (show width) ++ (show heigth)
+            return ()
+        else return ()
 
     descriptionScrolledWindow <- getScrolledWindow descriptionView
-    liftIO $ containerAdd window descriptionScrolledWindow
+    liftIO $ Gtk.containerAdd window descriptionScrolledWindow
+
+
+getSourceView :: EditorView -> Maybe SourceView
+getSourceView (GtkEditorView s) = Just s
+#ifdef LEKSAH_WITH_YI
+getSourceView YiEditorView _ = Nothing
+#endif
 
 
 --placeWindow :: Window -> EditorView -> IDEAction
