@@ -28,7 +28,11 @@ import qualified Graphics.UI.Gtk as Gtk hiding(onKeyPress, onKeyRelease)
 import Graphics.UI.Gtk (AttrOp (..)) -- import := unqualified for convenience
 import Graphics.UI.Gtk.Gdk.EventM as Gtk
 import IDE.Core.State
-import qualified IDE.Metainfo.Provider as MetaInfoProvider(getDescription)
+
+import qualified IDE.Metainfo.Provider as MetaInfoProvider
+import qualified IDE.Core.CTypes as CTypes
+import Data.Maybe (fromMaybe)
+
 import Control.Monad.Reader.Class (ask)
 import IDE.TextEditor
 
@@ -45,9 +49,11 @@ initArgumentHelper :: String -- ^ Function name
         -> IDEAction
 initArgumentHelper functionName sourceView (x, y) = do
     liftIO $ putStrLn $ "functionName: " ++ functionName
-    window <- openNewWindow
+    window          <- openNewWindow
     registerHandler window sourceView
-    addContent window functionName
+    description     <- MetaInfoProvider.getDescription functionName
+    addContent window description
+    addArgumentsToSourceView sourceView functionName
 
     liftIO $ Gtk.windowMove window x y
     liftIO $ Gtk.widgetShowAll window
@@ -104,9 +110,8 @@ registerHandler window sourceView = do
 
 
 addContent :: Gtk.Window -> String -> IDEAction
-addContent window functionName = do
+addContent window description = do
     prefs               <- readIDE prefs
-    description         <- MetaInfoProvider.getDescription functionName
     descriptionBuffer   <- newGtkBuffer Nothing description
     descriptionView     <- newView descriptionBuffer (textviewFont prefs)
     _ <- if (Nothing /= (getSourceView descriptionView)) then do
@@ -125,6 +130,33 @@ getSourceView (GtkEditorView s) = Just s
 #ifdef LEKSAH_WITH_YI
 getSourceView YiEditorView _ = Nothing
 #endif
+
+
+-- TODO only add when at end of line (or somehow else check if inserting arguments as text into sourceView is disturbing the workflow)
+addArgumentsToSourceView :: EditorView -> String -> IDEAction
+addArgumentsToSourceView sourceView functionName = do
+    workspaceInfo' <- MetaInfoProvider.getWorkspaceInfo
+    case workspaceInfo' of
+        Nothing -> return ()
+        Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
+            liftIO $ putStrLn $ unlines $ map (getFirstLine . show . fromJust) $ filter (/= Nothing) mbTypesList
+            where mbTypesList = map CTypes.dscMbTypeStr (MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2)
+
+-- TODO this function does not work as expected
+getFirstLine :: String -> String
+getFirstLine "" = ""
+getFirstLine (x:"") = x:""
+getFirstLine ('\\':'n':xs) = ""
+getFirstLine (x:xs) = getFirstLine xs
+
+
+#ifdef LEKSAH_WITH_YI
+addTypesToSourceView (YiEditorView _) _ = return ()
+#endif
+--
+--            return ((foldr (\d f -> shows (Present d) .  showChar '\n' . f) id
+--                (MetaInfoProvider.getIdentifierDescr name symbolTable1 symbolTable2)) "")
+
 
 
 --placeWindow :: Window -> EditorView -> IDEAction
