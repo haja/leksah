@@ -117,7 +117,6 @@ addContent window description = do
     _ <- if (Nothing /= (getSourceView descriptionView)) then do
             --TODO upadte window size on content length (doesn't work yet)
             (heigth, width)     <- liftIO $ Gtk.widgetGetSize $ fromJust $ getSourceView descriptionView
-            liftIO $ putStrLn $ (show width) ++ (show heigth)
             return ()
         else return ()
 
@@ -138,17 +137,25 @@ addArgumentsToSourceView sourceView functionName = do
     workspaceInfo' <- MetaInfoProvider.getWorkspaceInfo
     case workspaceInfo' of
         Nothing -> return ()
-        Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
-            liftIO $ putStrLn $ unlines $ map (getFirstLine . show . fromJust) $ filter (/= Nothing) mbTypesList
+        Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) -> do
+            -- get type string of all matching functions
+            liftIO $ putStrLn $ unlines $
+                map (removeMethodName . getFirstLine . show . fromJust) $
+                    filter (/= Nothing) mbTypesList
+            -- TODO insert in sourceView and keep positions in text even when edited (iterators can do that i guess)
             where mbTypesList = map CTypes.dscMbTypeStr (MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2)
 
--- TODO this function does not work as expected
+-- | Get the part of a string, until an "escaped" newline is found, i.e. "...\\n..."
 getFirstLine :: String -> String
 getFirstLine "" = ""
-getFirstLine (x:"") = x:""
-getFirstLine ('\\':'n':xs) = ""
-getFirstLine (x:xs) = getFirstLine xs
+getFirstLine ('\\':'n':xs) = "" -- stop at first "escaped" newline
+getFirstLine (x:xs) = x:(getFirstLine xs)
 
+-- | Remove the method name from type declaration
+removeMethodName :: String -> String
+removeMethodName "" = ""
+removeMethodName (':':':':xs) = xs -- return everything after first "::" occurance
+removeMethodName (x:xs) = removeMethodName xs
 
 #ifdef LEKSAH_WITH_YI
 addTypesToSourceView (YiEditorView _) _ = return ()
