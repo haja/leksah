@@ -53,6 +53,8 @@ initArgumentHelper functionName sourceView (x, y) = do
     registerHandler window sourceView
     description     <- MetaInfoProvider.getDescription functionName
     addContent window description
+{- TODO only add when at end of line
+(or somehow else check if inserting arguments as text into sourceView is disturbing the workflow) -}
     addArgumentsToSourceView sourceView functionName
 
     liftIO $ Gtk.windowMove window x y
@@ -131,19 +133,26 @@ getSourceView YiEditorView _ = Nothing
 #endif
 
 
--- TODO only add when at end of line (or somehow else check if inserting arguments as text into sourceView is disturbing the workflow)
+
 addArgumentsToSourceView :: EditorView -> String -> IDEAction
+#ifdef LEKSAH_WITH_YI
+addArgumentsToSourceView _ _ = return ()
+#endif
 addArgumentsToSourceView sourceView functionName = do
     workspaceInfo' <- MetaInfoProvider.getWorkspaceInfo
     case workspaceInfo' of
         Nothing -> return ()
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) -> do
             -- get type string of all matching functions
-            liftIO $ putStrLn $ unlines $
-                map (removeMethodName . getFirstLine . show . fromJust) $
-                    filter (/= Nothing) mbTypesList
+            liftIO $ putStrLn $ unlines typeList
             -- TODO insert in sourceView and keep positions in text even when edited (iterators can do that i guess)
-            where mbTypesList = map CTypes.dscMbTypeStr (MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2)
+
+
+
+            where mbTypesList = map CTypes.dscMbTypeStr
+                                (MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2)
+                  typeList =      map (removeMethodName . getFirstLine . show . fromJust) $
+                                filter (/= Nothing) mbTypesList
 
 -- | Get the part of a string, until an "escaped" newline is found, i.e. "...\\n..."
 getFirstLine :: String -> String
