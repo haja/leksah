@@ -36,7 +36,7 @@ import Data.Maybe (fromMaybe)
 import Control.Monad.Reader.Class (ask)
 import IDE.TextEditor
 
-
+import qualified IDE.ArgumentHelper.Parser as Parser
 import IDE.CompletionHelper
     (getIsWordChar, replaceWordStart, findWordStart, findWordEnd, longestCommonPrefix)
 
@@ -49,6 +49,8 @@ initArgumentHelper :: String -- ^ Function name
         -> IDEAction
 initArgumentHelper functionName sourceView (x, y) = do
     liftIO $ putStrLn $ "functionName: " ++ functionName
+
+    -- TODO begin user action somewhere
     window          <- openNewWindow
     registerHandler window sourceView
     description     <- MetaInfoProvider.getDescription functionName
@@ -98,7 +100,7 @@ registerHandler window sourceView = do
                     )
                     else return False
                 )
-
+        -- TODO remove marks on completion end. (different behavior depending on key? (eg abort?)
         case (name, modifier) of
             ("Return", _) -> closeIfVisible
             ("Escape", _) -> closeIfVisible
@@ -145,14 +147,24 @@ addArgumentsToSourceView sourceView functionName = do
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) -> do
             -- get type string of all matching functions
             liftIO $ putStrLn $ unlines typeList
-            -- TODO insert in sourceView and keep positions in text even when edited (iterators can do that i guess)
+            when (typeList /= []) $ do
+                -- TODO insert in sourceView and keep positions in text even when edited (marks can do that i guess)
+                buffer <- getBuffer sourceView
+                -- insert text at cursor
+                insertIter <- getInsertIter buffer
+                return ()
+
+                -- TODO parse method declarations
+                --Parser.parseMethodDeclaration $ head typeList
+
+                -- insert marks, one on the left and one on the right of each argument, with opposing gravities
 
 
+                where mbTypesList = map CTypes.dscMbTypeStr mbDescrList
+                      typeList    = map (removeMethodName . getFirstLine . show . fromJust) $
+                                    filter (/= Nothing) mbTypesList
+                      mbDescrList = MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2
 
-            where mbTypesList = map CTypes.dscMbTypeStr
-                                (MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2)
-                  typeList =      map (removeMethodName . getFirstLine . show . fromJust) $
-                                filter (/= Nothing) mbTypesList
 
 -- | Get the part of a string, until an "escaped" newline is found, i.e. "...\\n..."
 getFirstLine :: String -> String
@@ -165,14 +177,6 @@ removeMethodName :: String -> String
 removeMethodName "" = ""
 removeMethodName (':':':':xs) = xs -- return everything after first "::" occurance
 removeMethodName (x:xs) = removeMethodName xs
-
-#ifdef LEKSAH_WITH_YI
-addTypesToSourceView (YiEditorView _) _ = return ()
-#endif
---
---            return ((foldr (\d f -> shows (Present d) .  showChar '\n' . f) id
---                (MetaInfoProvider.getIdentifierDescr name symbolTable1 symbolTable2)) "")
-
 
 
 --placeWindow :: Window -> EditorView -> IDEAction

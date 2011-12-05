@@ -127,7 +127,7 @@ library
        build-depends: process-leksah >=1.0.1.3 && <1.1
 
     exposed-modules:
-        IDE.Leksah IDE.Completion IDE.CompletionHelper IDE.ArgumentHelper IDE.ImportTool
+        IDE.Leksah IDE.Completion IDE.CompletionHelper IDE.ArgumentHelper IDE.ArgumentHelper.Parser IDE.ImportTool
         IDE.Find IDE.Session IDE.Command IDE.Keymap IDE.Utils.GUIUtils IDE.SymbolNavigation
         IDE.Package IDE.YiConfig IDE.OSX
         IDE.GUIHistory IDE.SourceCandy IDE.NotebookFlipper
