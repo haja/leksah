@@ -91,6 +91,7 @@ openNewWindow = do
 --
 registerHandler :: Gtk.Window -> EditorView -> IDEAction
 registerHandler window sourceView = do
+    buffer <- getBuffer sourceView
     connections <- sourceView `onKeyPress` \name modifier keyVal -> do
         let closeIfVisible = (do
                 visible <- liftIO $ Gtk.get window Gtk.widgetVisible
@@ -98,6 +99,10 @@ registerHandler window sourceView = do
                         liftIO $ Gtk.widgetDestroy window
                         connections <- readIDE argsHelperConnections
                         liftIO $ signalDisconnectAll connections
+                        marks <- readIDE argsHelperMarks
+                        mapM_ (\(m1, m2) -> do
+                            deleteMark buffer m1
+                            deleteMark buffer m2) marks
                         return True
                     )
                     else return False
@@ -108,10 +113,8 @@ registerHandler window sourceView = do
                 case (marks) of
                     [] -> return False
                     _ -> do
-                        -- marks is a cycle
-                        let newMarks = drop 1 marks
-                        let nextMarks = head newMarks
-                        buffer <- getBuffer sourceView
+                        let nextMarks = head marks
+                        let newMarks = (drop 1 marks) ++ [nextMarks]
                         printMarks buffer nextMarks -- debug output
                         modifyIDE_ $ \ide -> ide{argsHelperMarks = newMarks}
                         setFocusBetweenMarks buffer nextMarks
@@ -222,8 +225,8 @@ saveMarks buf marks = do
     -- "show" marks (debugging)
     mapM_ (printMarks buf) marks
 
-    -- save marks as cycle in IDE state
-    modifyIDE_ $ \ide -> ide{argsHelperMarks = cycle marks}
+    -- save marks in IDE state
+    modifyIDE_ $ \ide -> ide{argsHelperMarks = marks}
     return ()
 
 -- | Helper function to print marsk to console

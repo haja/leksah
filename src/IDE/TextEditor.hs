@@ -35,6 +35,7 @@ module IDE.TextEditor (
 ,   createMark
 ,   cutClipboard
 ,   delete
+,   deleteMark
 ,   deleteSelection
 ,   endNotUndoableAction
 ,   endUserAction
@@ -310,6 +311,15 @@ delete (GtkEditorBuffer sb) (GtkEditorIter first) (GtkEditorIter last) = liftIO 
 delete (YiEditorBuffer b) (YiEditorIter (Yi.Iter _ first)) (YiEditorIter (Yi.Iter _ last)) =
     withYiBuffer b $ Yi.deleteRegionB $ Yi.mkRegion first last
 delete _ _ _ = liftIO $ fail "Mismatching TextEditor types in delete"
+#endif
+
+deleteMark :: EditorBuffer
+              -> EditorMark
+              -> IDEM ()
+deleteMark (GtkEditorBuffer sb) (GtkEditorMark m) = liftIO $
+    Gtk.textBufferDeleteMark sb m
+#ifdef LEKSAH_WITH_YI
+deleteMark _ _ _ = liftIO $ fail "Mismatching TextEditor types in deleteMark (Yi not suported)" -- TODO implement this for Yi
 #endif
 
 deleteSelection :: EditorBuffer -> Bool -> Bool -> IDEM ()
