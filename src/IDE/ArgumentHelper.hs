@@ -36,6 +36,7 @@ import Data.Maybe (fromMaybe)
 import Control.Monad.Reader.Class (ask)
 import IDE.TextEditor
 
+import IDE.Core.Types (argsHelperMarks, argsHelperConnections)
 
 import IDE.CompletionHelper
     (getIsWordChar, replaceWordStart, findWordStart, findWordEnd, longestCommonPrefix)
@@ -50,12 +51,13 @@ initArgumentHelper :: String -- ^ Function name
 initArgumentHelper functionName sourceView (x, y) = do
     liftIO $ putStrLn $ "functionName: " ++ functionName
     window          <- openNewWindow
-    registerHandler window sourceView
     description     <- MetaInfoProvider.getDescription functionName
     addContent window description
 {- TODO only add when at end of line
 (or somehow else check if inserting arguments as text into sourceView is disturbing the workflow) -}
     addArgumentsToSourceView sourceView functionName
+
+    registerHandler window sourceView
 
     liftIO $ Gtk.windowMove window x y
     liftIO $ Gtk.widgetShowAll window
@@ -89,25 +91,44 @@ openNewWindow = do
 --
 registerHandler :: Gtk.Window -> EditorView -> IDEAction
 registerHandler window sourceView = do
-    sourceView `onKeyPress` \name modifier keyVal -> do
+    connections <- sourceView `onKeyPress` \name modifier keyVal -> do
         let closeIfVisible = (do
                 visible <- liftIO $ Gtk.get window Gtk.widgetVisible
                 if visible then (do
                         liftIO $ Gtk.widgetDestroy window
+                        connections <- readIDE argsHelperConnections
+                        liftIO $ signalDisconnectAll connections
                         return True
                     )
                     else return False
+                )
+        let focusNextMarks = (do
+                liftIO $ putStrLn "focusNextMarks called"
+                marks <- readIDE argsHelperMarks
+                case (marks) of
+                    [] -> return False
+                    _ -> do
+                        -- marks is a cycle
+                        let newMarks = drop 1 marks
+                        let nextMarks = head newMarks
+                        buffer <- getBuffer sourceView
+                        printMarks buffer nextMarks -- debug output
+                        modifyIDE_ $ \ide -> ide{argsHelperMarks = newMarks}
+                        setFocusBetweenMarks buffer nextMarks
+                        return True
                 )
 
         case (name, modifier) of
             ("Return", _) -> closeIfVisible
             ("Escape", _) -> closeIfVisible
+            ("Tab", _) -> focusNextMarks >> return True
             -- don't signal that these keys have been handled:
             ("Up", _) -> closeIfVisible >> return False
             ("Down", _) -> closeIfVisible >> return False
             ("Control_L", _) -> closeIfVisible >> return False
             ("Control_R", _) -> closeIfVisible >> return False
             (_, _) -> return False
+    modifyIDE_ $ \ide -> ide{argsHelperConnections = connections}
     return ()
 
 
@@ -157,7 +178,7 @@ addArgumentsToSourceView sourceView functionName = do
             case (marksList) of
                 [] -> return ()
                 _ -> do
-                    mapM_ (saveMarks buffer) marksList
+                    saveMarks buffer marksList
                     mapM_ (highlightBetweenMarks buffer) marksList
                     setFocusBetweenMarks buffer $ head marksList
 
@@ -194,15 +215,26 @@ insertTextWithMarks buffer str = do
     endMark <- createMark buffer endIter True
     return (startMark, endMark)
 
--- TODO implement this dummy method
-saveMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
-saveMarks buf (start, end) = do
-    startI <- getIterAtMark buf start
-    startPos <- getOffset startI
-    endI <- getIterAtMark buf end
-    endPos <- getOffset endI
-    liftIO $ putStrLn $ "marks: start, end" ++ (show startPos) ++ ", " ++ (show endPos)
+-- TODO remove EditorBuffer arg and debug output
+-- | Saves given marks to the IDE state.
+saveMarks :: EditorBuffer -> [(EditorMark, EditorMark)] -> IDEAction
+saveMarks buf marks = do
+    -- "show" marks (debugging)
+    mapM_ (printMarks buf) marks
+
+    -- save marks as cycle in IDE state
+    modifyIDE_ $ \ide -> ide{argsHelperMarks = cycle marks}
     return ()
+
+-- | Helper function to print marsk to console
+printMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
+printMarks buf (start, end) = do
+        startI <- getIterAtMark buf start
+        startPos <- getOffset startI
+        endI <- getIterAtMark buf end
+        endPos <- getOffset endI
+        liftIO $ putStrLn $ "marks: start, end" ++ (show startPos) ++ ", " ++ (show endPos)
+        return ()
 
 -- | Get the part of a string, until an "escaped" newline is found, i.e. "...\\n..."
 getFirstLine :: String -> String

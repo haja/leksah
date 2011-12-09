@@ -175,36 +175,7 @@ import System.FilePath ((</>))
 
 import qualified Graphics.UI.Gtk.Gdk.EventM as GTKEventM
 
--- Data types
-data EditorBuffer = GtkEditorBuffer Gtk.SourceBuffer
-#ifdef LEKSAH_WITH_YI
-    | YiEditorBuffer Yi.Buffer
-#endif
-
-data EditorView = GtkEditorView Gtk.SourceView
-#ifdef LEKSAH_WITH_YI
-    | YiEditorView Yi.View
-#endif
-
-data EditorMark = GtkEditorMark Gtk.TextMark
-#ifdef LEKSAH_WITH_YI
-    | YiEditorMark Yi.Mark
-#endif
-
-data EditorIter = GtkEditorIter Gtk.TextIter
-#ifdef LEKSAH_WITH_YI
-    | YiEditorIter Yi.Iter
-#endif
-
-data EditorTagTable = GtkEditorTagTable Gtk.TextTagTable
-#ifdef LEKSAH_WITH_YI
-    | YiEditorTagTable
-#endif
-
-data EditorTag = GtkEditorTag Gtk.TextTag
-#ifdef LEKSAH_WITH_YI
-    | YiEditorTag
-#endif
+import IDE.TextEditorTypes
 
 
 #ifdef LEKSAH_WITH_YI

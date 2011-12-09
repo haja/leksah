@@ -127,6 +127,8 @@ import Text.PrettyPrint (render)
 import Data.Typeable
 import qualified Data.Map as Map
 
+import IDE.TextEditorTypes
+
 import qualified VCSWrapper.Common as VCS
 import qualified VCSGui.Common as VCSGUI
 
@@ -164,6 +166,8 @@ data IDE            =  IDE {
 ,   runningTool     ::   Maybe ProcessHandle
 ,   debugState      ::   Maybe (IDEPackage, ToolState)
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
+,   argsHelperMarks ::   [(EditorMark, EditorMark)]
+,   argsHelperConnections :: Connections
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
 ,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe String)) -- menus for packages, password
