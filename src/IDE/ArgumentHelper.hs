@@ -147,12 +147,62 @@ addArgumentsToSourceView sourceView functionName = do
             liftIO $ putStrLn $ unlines typeList
             -- TODO insert in sourceView and keep positions in text even when edited (iterators can do that i guess)
 
-
+            buffer <- getBuffer sourceView
+            -- TODO simplify this in one map?
+            marksList <- mapM (\str -> do
+                insertIter <- getInsertIter buffer
+                insert buffer insertIter " "
+                insertTextWithMarks buffer str
+                ) argTypes
+            case (marksList) of
+                [] -> return ()
+                _ -> do
+                    mapM_ (saveMarks buffer) marksList
+                    mapM_ (highlightBetweenMarks buffer) marksList
+                    setFocusBetweenMarks buffer $ head marksList
 
             where mbTypesList = map CTypes.dscMbTypeStr
                                 (MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2)
                   typeList =      map (removeMethodName . getFirstLine . show . fromJust) $
                                 filter (/= Nothing) mbTypesList
+                  argTypes =    ["String", "String", "Int"] -- TODO get real argTypes
+
+
+-- TODO implement this method
+highlightBetweenMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
+highlightBetweenMarks _ _ = return ()
+
+setFocusBetweenMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
+setFocusBetweenMarks buf (start, end) = do
+    startI <- getIterAtMark buf start
+    endI <- getIterAtMark buf end
+    selectRange buf startI endI
+
+{- | insertTextWithMarks @buffer@ @str@: inserts str in buffer at current cursor
+    and moves curser to the end of str.
+    Returns 'EditorMark' of start and end of inserted @str@. Marks have
+    leftGravity.
+ -}
+insertTextWithMarks :: EditorBuffer -> String -> IDEM (EditorMark, EditorMark)
+insertTextWithMarks buffer str = do
+    cursorIter <- getInsertIter buffer
+    startMark <- createMark buffer cursorIter True
+    insert buffer cursorIter str
+    startIter <- getIterAtMark buffer startMark
+    endIter <- forwardCharsC startIter (length str)
+    placeCursor buffer endIter
+    endMark <- createMark buffer endIter True
+    return (startMark, endMark)
+
+-- TODO implement this dummy method
+saveMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
+saveMarks buf (start, end) = do
+    startI <- getIterAtMark buf start
+    startPos <- getOffset startI
+    endI <- getIterAtMark buf end
+    endPos <- getOffset endI
+    liftIO $ putStrLn $ "marks: start, end" ++ (show startPos) ++ ", " ++ (show endPos)
+    return ()
 
 -- | Get the part of a string, until an "escaped" newline is found, i.e. "...\\n..."
 getFirstLine :: String -> String
