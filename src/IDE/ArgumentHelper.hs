@@ -158,10 +158,9 @@ getSourceView YiEditorView _ = Nothing
 #endif
 
 
-
 addArgumentsToSourceView :: EditorView -> String -> IDEAction
 #ifdef LEKSAH_WITH_YI
-addArgumentsToSourceView _ _ = return ()
+addArgumentsToSourceView _ _ = saveMarks [] >> return ()
 #endif
 addArgumentsToSourceView sourceView functionName = do
     workspaceInfo' <- MetaInfoProvider.getWorkspaceInfo
@@ -178,18 +177,18 @@ addArgumentsToSourceView sourceView functionName = do
                 insert buffer insertIter " "
                 insertTextWithMarks buffer str
                 ) argTypes
+            saveMarks marksList
             case (marksList) of
                 [] -> return ()
                 _ -> do
-                    saveMarks buffer marksList
                     mapM_ (highlightBetweenMarks buffer) marksList
                     setFocusBetweenMarks buffer $ head marksList
 
             where mbTypesList = map CTypes.dscMbTypeStr mbDescrList
-                  typeList    = map (removeMethodName . getFirstLine . show . fromJust) $
+                  typeList    = map (tail . getFirstLine . show . fromJust) $
                                     filter (/= Nothing) mbTypesList
                   mbDescrList = MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2
-                  argTypes =    ["String", "String", "Int"] -- TODO get real argTypes
+                  argTypes =    Parser.parseArgumentsFromMethodDeclaration $ head typeList
 
 
 -- TODO implement this method
@@ -218,14 +217,9 @@ insertTextWithMarks buffer str = do
     endMark <- createMark buffer endIter True
     return (startMark, endMark)
 
--- TODO remove EditorBuffer arg and debug output
 -- | Saves given marks to the IDE state.
-saveMarks :: EditorBuffer -> [(EditorMark, EditorMark)] -> IDEAction
-saveMarks buf marks = do
-    -- "show" marks (debugging)
-    mapM_ (printMarks buf) marks
-
-    -- save marks in IDE state
+saveMarks :: [(EditorMark, EditorMark)] -> IDEAction
+saveMarks marks = do
     modifyIDE_ $ \ide -> ide{argsHelperMarks = marks}
     return ()
 
@@ -239,17 +233,12 @@ printMarks buf (start, end) = do
         liftIO $ putStrLn $ "marks: start, end" ++ (show startPos) ++ ", " ++ (show endPos)
         return ()
 
+-- TODO replace method to replace escaped with real newline.
 -- | Get the part of a string, until an "escaped" newline is found, i.e. "...\\n..."
 getFirstLine :: String -> String
 getFirstLine "" = ""
 getFirstLine ('\\':'n':xs) = "" -- stop at first "escaped" newline
 getFirstLine (x:xs) = x:(getFirstLine xs)
-
--- | Remove the method name from type declaration
-removeMethodName :: String -> String
-removeMethodName "" = ""
-removeMethodName (':':':':xs) = xs -- return everything after first "::" occurance
-removeMethodName (x:xs) = removeMethodName xs
 
 
 --placeWindow :: Window -> EditorView -> IDEAction

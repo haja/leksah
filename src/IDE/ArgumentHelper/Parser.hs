@@ -6,6 +6,7 @@ import Text.Parsec hiding (try)
 import Text.ParserCombinators.Parsec
 import qualified Text.Parsec.Token as P
 import Text.Parsec.Language (haskellDef)
+import Control.Monad (liftM)
 
 
 -- | Return all arguments of given method declaration.
@@ -18,30 +19,44 @@ parseArgumentsFromMethodDeclaration str = case (parse argumentsFromMethodDeclara
 argumentsFromMethodDeclaration :: Parser [String]
 argumentsFromMethodDeclaration = do
     functionName
-    --many whiteSpace -- TODO this doesn't work. but lookup how ghc is implemented to parse method declarations
-    many space
+    whiteSpace
     string "::"
-    many space
-    args <- argumentsAndReturnType
-    return $ init args
+    whiteSpace
+    arguments
 
 functionName = do
     c <- lower
     x <- many letter
     return $ c:x
 
-argumentsAndReturnType = sepBy typeName nextArg
+arguments = many $ try argType
 
-typeName = do -- TODO underscore _ valid?
-    c <- upper
-    x <- many (letter <|> (char '_'))
-    return $ c:x
+typeName = manyTill (letter <|> char '(' <|> char ')' <|> char '_') whiteSpace
 
-nextArg = do
-    many space
-    string "->"
-    many space
+argType = do
+    liftM unwords $ manyTill typeName $ try nextArg
 
+nextArg = string "->"
 
 lexer = P.makeTokenParser haskellDef
-whiteSpace = P.whiteSpace lexer
+--whiteSpace = P.whiteSpace lexer
+whiteSpace = many1 space
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
