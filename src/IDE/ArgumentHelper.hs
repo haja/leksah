@@ -36,8 +36,8 @@ import Data.Maybe (fromMaybe)
 import Control.Monad.Reader.Class (ask)
 import IDE.TextEditor
 
+import qualified IDE.ArgumentHelper.Parser as Parser
 import IDE.Core.Types (argsHelperMarks, argsHelperConnections)
-
 import IDE.CompletionHelper
     (getIsWordChar, replaceWordStart, findWordStart, findWordEnd, longestCommonPrefix)
 
@@ -50,6 +50,8 @@ initArgumentHelper :: String -- ^ Function name
         -> IDEAction
 initArgumentHelper functionName sourceView (x, y) = do
     liftIO $ putStrLn $ "functionName: " ++ functionName
+
+    -- TODO begin user action somewhere
     window          <- openNewWindow
     description     <- MetaInfoProvider.getDescription functionName
     addContent window description
@@ -120,7 +122,6 @@ registerHandler window sourceView = do
                         setFocusBetweenMarks buffer nextMarks
                         return True
                 )
-
         case (name, modifier) of
             ("Return", _) -> closeIfVisible
             ("Escape", _) -> closeIfVisible
@@ -169,7 +170,6 @@ addArgumentsToSourceView sourceView functionName = do
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) -> do
             -- get type string of all matching functions
             liftIO $ putStrLn $ unlines typeList
-            -- TODO insert in sourceView and keep positions in text even when edited (iterators can do that i guess)
 
             buffer <- getBuffer sourceView
             -- TODO simplify this in one map?
@@ -185,10 +185,10 @@ addArgumentsToSourceView sourceView functionName = do
                     mapM_ (highlightBetweenMarks buffer) marksList
                     setFocusBetweenMarks buffer $ head marksList
 
-            where mbTypesList = map CTypes.dscMbTypeStr
-                                (MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2)
-                  typeList =      map (removeMethodName . getFirstLine . show . fromJust) $
-                                filter (/= Nothing) mbTypesList
+            where mbTypesList = map CTypes.dscMbTypeStr mbDescrList
+                  typeList    = map (removeMethodName . getFirstLine . show . fromJust) $
+                                    filter (/= Nothing) mbTypesList
+                  mbDescrList = MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2
                   argTypes =    ["String", "String", "Int"] -- TODO get real argTypes
 
 
@@ -250,14 +250,6 @@ removeMethodName :: String -> String
 removeMethodName "" = ""
 removeMethodName (':':':':xs) = xs -- return everything after first "::" occurance
 removeMethodName (x:xs) = removeMethodName xs
-
-#ifdef LEKSAH_WITH_YI
-addTypesToSourceView (YiEditorView _) _ = return ()
-#endif
---
---            return ((foldr (\d f -> shows (Present d) .  showChar '\n' . f) id
---                (MetaInfoProvider.getIdentifierDescr name symbolTable1 symbolTable2)) "")
-
 
 
 --placeWindow :: Window -> EditorView -> IDEAction
