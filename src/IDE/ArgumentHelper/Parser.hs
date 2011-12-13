@@ -22,6 +22,7 @@ argumentsFromMethodDeclaration = do
     whiteSpace
     string "::"
     whiteSpace
+    optional $ try forallDecl
     arguments
 
 functionName = do
@@ -31,12 +32,16 @@ functionName = do
 
 arguments = many $ try argType
 
-typeName = manyTill (letter <|> char '(' <|> char ')' <|> char '_') whiteSpace
+typeName = manyTill (letter <|> oneOf ".()_") whiteSpace
 
 argType = do
     liftM unwords $ manyTill typeName $ try nextArg
 
 nextArg = string "->"
+
+forallDecl = do
+    string "forall"
+    manyTill anyChar $ try $ char '.'
 
 lexer = P.makeTokenParser haskellDef
 --whiteSpace = P.whiteSpace lexer
