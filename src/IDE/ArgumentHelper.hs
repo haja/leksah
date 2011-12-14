@@ -101,23 +101,23 @@ registerHandler window sourceView = do
                         liftIO $ Gtk.widgetDestroy window
                         connections <- readIDE argsHelperConnections
                         liftIO $ signalDisconnectAll connections
-                        marks <- readIDE argsHelperMarks
+                        (marks, start, end) <- readIDE argsHelperMarks
                         mapM_ (\(m1, m2) -> do
                             deleteMark buffer m1
-                            deleteMark buffer m2) marks
+                            deleteMark buffer m2) ((start, end):marks)
                         return True
                     )
                     else return False
                 )
         let focusNextMarks = (do
                 liftIO $ putStrLn "focusNextMarks called"
-                marks <- readIDE argsHelperMarks
+                (marks, s, e) <- readIDE argsHelperMarks
                 case (marks) of
                     [] -> return False
                     _ -> do
                         let (nextMarks, newMarks) = cycleList marks
                         printMarks buffer nextMarks -- debug output
-                        modifyIDE_ $ \ide -> ide{argsHelperMarks = newMarks}
+                        modifyIDE_ $ \ide -> ide{argsHelperMarks = (newMarks, s, e)}
                         setFocusBetweenMarks buffer nextMarks
                         return True
                 )
@@ -149,20 +149,8 @@ cycleToPrevMethodType _ _ = return ()
 
 removeArgumentsFromSourceView :: EditorBuffer -> IDEAction
 removeArgumentsFromSourceView buffer = do
-    marks <- readIDE argsHelperMarks
-    case (marks) of
-        [] -> return ()
-        _ -> do
-            -- delete between marks
-            singleMarks <- mapM (\(s, e) -> do
-                deleteBetweenMarks buffer s e
-                return s
-                ) marks
-            -- delete spaces in between
-            let (_, shiftedMarks) = cycleList singleMarks
-            mapM_ (\(s, e) -> do
-                deleteBetweenMarks buffer s e) $ zip singleMarks shiftedMarks
-                -- TODO delete first space after method name
+    (_, start, end) <- readIDE argsHelperMarks
+    deleteBetweenMarks buffer start end
 
 
 deleteBetweenMarks :: EditorBuffer -> EditorMark -> EditorMark -> IDEAction
@@ -222,6 +210,10 @@ saveMethodDecls list = do
 
 addArgumentsToSourceView' :: EditorBuffer -> [String] -> IDEAction
 addArgumentsToSourceView' buffer argTypes = do
+    -- save start of arguments
+    sI <- getInsertIter buffer
+    start <- createMark buffer sI True
+    end <- createMark buffer sI False
     -- TODO simplify this in one map?
     marksList <- mapM (\str -> do
         insertIter <- getInsertIter buffer
@@ -231,11 +223,11 @@ addArgumentsToSourceView' buffer argTypes = do
     case (marksList) of
         [] -> do
             liftIO $ putStrLn "no marks"
-            saveMarks []
+            saveMarks ([], start, end)
             return ()
         _ -> do
             let (curMarks, newMarks) = cycleList marksList
-            saveMarks newMarks
+            saveMarks (newMarks, start, end)
             mapM_ (highlightBetweenMarks buffer) newMarks
             setFocusBetweenMarks buffer curMarks
 
@@ -267,7 +259,7 @@ insertTextWithMarks buffer str = do
     return (startMark, endMark)
 
 -- | Saves given marks to the IDE state.
-saveMarks :: [(EditorMark, EditorMark)] -> IDEAction
+saveMarks :: ([(EditorMark, EditorMark)], EditorMark, EditorMark) -> IDEAction
 saveMarks marks = do
     modifyIDE_ $ \ide -> ide{argsHelperMarks = marks}
     return ()

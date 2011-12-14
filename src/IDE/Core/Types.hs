@@ -166,7 +166,7 @@ data IDE            =  IDE {
 ,   runningTool     ::   Maybe ProcessHandle
 ,   debugState      ::   Maybe (IDEPackage, ToolState)
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
-,   argsHelperMarks ::   [(EditorMark, EditorMark)]
+,   argsHelperMarks ::   ([(EditorMark, EditorMark)], EditorMark, EditorMark)
 ,   argsHelperConnections :: Connections
 ,   argsHelperMethodDecls :: [String]
 ,   yiControl       ::   Yi.Control
