@@ -19,6 +19,7 @@ import Prelude hiding(getChar, getLine)
 
 import Data.List as List (stripPrefix, isPrefixOf, filter)
 import Data.Char
+import qualified Data.ByteString.Char8 as Char8
 import Data.Maybe (fromJust, isJust)
 import Data.IORef
 import Control.Monad
@@ -208,10 +209,11 @@ addArgumentsToSourceView sourceView functionName = do
             addArgumentsToSourceView' buffer argTypes
 
             where mbTypesList = map CTypes.dscMbTypeStr mbDescrList
-                  typeList    = map (tail . getFirstLine . show . fromJust) $
+                  typeList    = map (Char8.unpack . fromJust) $
                                     filter (/= Nothing) mbTypesList
                   mbDescrList = MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2
                   argTypes =    Parser.parseArgumentsFromMethodDeclaration $ head typeList
+
 
 saveMethodDecls :: (Maybe String, [String]) -> IDEAction
 saveMethodDecls mDecls = do
@@ -292,13 +294,6 @@ printMarks buf (start, end) = do
         endPos <- getOffset endI
         liftIO $ putStrLn $ "marks: start, end" ++ (show startPos) ++ ", " ++ (show endPos)
         return ()
-
--- TODO replace method to replace escaped with real newline.
--- | Get the part of a string, until an "escaped" newline is found, i.e. "...\\n..."
-getFirstLine :: String -> String
-getFirstLine "" = ""
-getFirstLine ('\\':'n':xs) = "" -- stop at first "escaped" newline
-getFirstLine (x:xs) = x:(getFirstLine xs)
 
 
 --placeWindow :: Window -> EditorView -> IDEAction
