@@ -19,7 +19,7 @@ import Prelude hiding(getChar, getLine)
 
 import Data.List as List (stripPrefix, isPrefixOf, filter)
 import Data.Char
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
 import Data.IORef
 import Control.Monad
 import Control.Monad.Trans (liftIO)
@@ -95,41 +95,49 @@ registerHandler :: Gtk.Window -> EditorView -> IDEAction
 registerHandler window sourceView = do
     buffer <- getBuffer sourceView
     connections <- sourceView `onKeyPress` \name modifier keyVal -> do
+        liftIO $ putStrLn name
         let closeIfVisible = (do
                 visible <- liftIO $ Gtk.get window Gtk.widgetVisible
                 if visible then (do
                         liftIO $ Gtk.widgetDestroy window
                         connections <- readIDE argsHelperConnections
                         liftIO $ signalDisconnectAll connections
-                        (marks, start, end) <- readIDE argsHelperMarks
-                        mapM_ (\(m1, m2) -> do
-                            deleteMark buffer m1
-                            deleteMark buffer m2) ((start, end):marks)
+                        (mbCurMarks, marks, start, end) <- readIDE argsHelperMarks
+                        if (isJust mbCurMarks) then
+                            (mapM_ (\(m1, m2) -> do
+                                deleteMark buffer m1
+                                deleteMark buffer m2) ((fromJust mbCurMarks):(start, end):marks))
+                            else
+                                (mapM_ (\(m1, m2) -> do
+                                    deleteMark buffer m1
+                                    deleteMark buffer m2) ((start, end):marks))
                         return True
                     )
                     else return False
                 )
-        let focusNextMarks = (do
+        let focusNextMarks cycleListFn = (do
                 liftIO $ putStrLn "focusNextMarks called"
-                (marks, s, e) <- readIDE argsHelperMarks
+                (curMarks, marks, s, e) <- readIDE argsHelperMarks
                 case (marks) of
                     [] -> return False
                     _ -> do
-                        let (nextMarks, newMarks) = cycleList marks
+                        let (Just nextMarks, newMarks) = cycleListFn curMarks marks
                         printMarks buffer nextMarks -- debug output
-                        modifyIDE_ $ \ide -> ide{argsHelperMarks = (newMarks, s, e)}
+                        modifyIDE_ $ \ide -> ide{argsHelperMarks = (Just nextMarks, newMarks, s, e)}
                         setFocusBetweenMarks buffer nextMarks
                         return True
                 )
         case (name, modifier) of
             ("Return", _) -> closeIfVisible
             ("Escape", _) -> closeIfVisible
-            ("Tab", _) -> focusNextMarks >> return True
+            ("Tab", _) -> focusNextMarks cycleList >> return True
+            ("ISO_Left_Tab", _) -> focusNextMarks cycleListBackwards >> return True
             ("Up", _) -> cycleToPrevMethodType window buffer >> return True
             ("Down", _) -> cycleToNextMethodType window buffer >> return True
             -- don't signal that these keys have been handled:
             ("Control_L", _) -> closeIfVisible >> return False
             ("Control_R", _) -> closeIfVisible >> return False
+            ("Alt_L", _) -> closeIfVisible >> return False
             (_, _) -> return False
     modifyIDE_ $ \ide -> ide{argsHelperConnections = connections}
     return ()
@@ -138,18 +146,19 @@ registerHandler window sourceView = do
 cycleToNextMethodType :: Gtk.Window -> EditorBuffer -> IDEAction
 cycleToNextMethodType window buffer = do
     removeArgumentsFromSourceView buffer
-    methodDecls <- readIDE argsHelperMethodDecls
-    let (_, newDecls) = cycleList methodDecls
-    let (curDecl, _) = cycleList methodDecls
-    saveMethodDecls newDecls
-    addArgumentsToSourceView' buffer $ Parser.parseArgumentsFromMethodDeclaration curDecl
+    (oldDecl, methodDecls) <- readIDE argsHelperMethodDecls
+    let (mbCurDecl, newDecls) = cycleList oldDecl methodDecls
+    saveMethodDecls (mbCurDecl, newDecls)
+    if (isJust mbCurDecl) then
+        addArgumentsToSourceView' buffer $ Parser.parseArgumentsFromMethodDeclaration (fromJust mbCurDecl)
+            else return ()
 
 cycleToPrevMethodType :: Gtk.Window -> EditorBuffer -> IDEAction
 cycleToPrevMethodType _ _ = return ()
 
 removeArgumentsFromSourceView :: EditorBuffer -> IDEAction
 removeArgumentsFromSourceView buffer = do
-    (_, start, end) <- readIDE argsHelperMarks
+    (_, _, start, end) <- readIDE argsHelperMarks
     deleteBetweenMarks buffer start end
 
 
@@ -194,7 +203,8 @@ addArgumentsToSourceView sourceView functionName = do
             liftIO $ putStrLn $ unlines typeList
 
             buffer <- getBuffer sourceView
-            saveMethodDecls typeList
+            if (typeList == []) then saveMethodDecls (Nothing, [])
+                else saveMethodDecls (Just $ head typeList, init typeList)
             addArgumentsToSourceView' buffer argTypes
 
             where mbTypesList = map CTypes.dscMbTypeStr mbDescrList
@@ -203,9 +213,9 @@ addArgumentsToSourceView sourceView functionName = do
                   mbDescrList = MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2
                   argTypes =    Parser.parseArgumentsFromMethodDeclaration $ head typeList
 
-saveMethodDecls :: [String] -> IDEAction
-saveMethodDecls list = do
-    modifyIDE_ $ \ide -> ide{argsHelperMethodDecls = list}
+saveMethodDecls :: (Maybe String, [String]) -> IDEAction
+saveMethodDecls mDecls = do
+    modifyIDE_ $ \ide -> ide{argsHelperMethodDecls = mDecls}
     return ()
 
 addArgumentsToSourceView' :: EditorBuffer -> [String] -> IDEAction
@@ -223,12 +233,11 @@ addArgumentsToSourceView' buffer argTypes = do
     case (marksList) of
         [] -> do
             liftIO $ putStrLn "no marks"
-            saveMarks ([], start, end)
+            saveMarks (Nothing, [], start, end)
             return ()
-        _ -> do
-            let (curMarks, newMarks) = cycleList marksList
-            saveMarks (newMarks, start, end)
-            mapM_ (highlightBetweenMarks buffer) newMarks
+        (curMarks:newMarks) -> do
+            saveMarks (Just curMarks, newMarks, start, end)
+            mapM_ (highlightBetweenMarks buffer) marksList
             setFocusBetweenMarks buffer curMarks
 
 
@@ -259,18 +268,22 @@ insertTextWithMarks buffer str = do
     return (startMark, endMark)
 
 -- | Saves given marks to the IDE state.
-saveMarks :: ([(EditorMark, EditorMark)], EditorMark, EditorMark) -> IDEAction
+saveMarks :: (Maybe (EditorMark, EditorMark), [(EditorMark, EditorMark)], EditorMark, EditorMark) -> IDEAction
 saveMarks marks = do
     modifyIDE_ $ \ide -> ide{argsHelperMarks = marks}
     return ()
 
-cycleList :: [a] -> (a, [a])
-cycleList (x:xs) = (x, xs ++ [x])
+cycleList :: Maybe a -> [a] -> (Maybe a, [a])
+cycleList Nothing _ = (Nothing, [])
+cycleList mbX [] = (mbX, [])
+cycleList (Just oldCur) (x:xs) = (Just x, xs ++ [oldCur])
 
-cycleListBackwards :: [a] -> (a, [a])
-cycleListBackwards l = (last l, (last l):(init l))
+cycleListBackwards :: Maybe a -> [a] -> (Maybe a, [a])
+cycleListBackwards Nothing _ = (Nothing, [])
+cycleListBackwards mbX [] = (mbX, [])
+cycleListBackwards (Just oldCur) l = (Just $ last l, (oldCur):(init l))
 
--- | Helper function to print marsk to console
+-- | Helper function to print marks to console
 printMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
 printMarks buf (start, end) = do
         startI <- getIterAtMark buf start

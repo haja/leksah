@@ -166,9 +166,9 @@ data IDE            =  IDE {
 ,   runningTool     ::   Maybe ProcessHandle
 ,   debugState      ::   Maybe (IDEPackage, ToolState)
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
-,   argsHelperMarks ::   ([(EditorMark, EditorMark)], EditorMark, EditorMark)
+,   argsHelperMarks ::   (Maybe (EditorMark, EditorMark), [(EditorMark, EditorMark)], EditorMark, EditorMark)
 ,   argsHelperConnections :: Connections
-,   argsHelperMethodDecls :: [String]
+,   argsHelperMethodDecls :: (Maybe String, [String])
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
 ,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe String)) -- menus for packages, password
