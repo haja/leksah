@@ -112,7 +112,13 @@ import Graphics.UI.Gtk
         notebookGetNthPage, notebookPageNum, widgetHide, dialogRun,
         messageDialogNew, scrolledWindowSetShadowType,
         scrolledWindowSetPolicy, dialogSetDefaultResponse, postGUIAsync,
-        fileChooserSetCurrentFolder, fileChooserSelectFilename)
+        fileChooserSetCurrentFolder, fileChooserSelectFilename
+        --drag and drop support
+        , castToWidget, dragDestSet, DestDefaults (..) , DragAction (..) ,on, dragDataReceived
+        , dragFinish, dragDrop, dragFinish, dragSourceSet, targetListNew, targetListAdd
+        , selectionTypeInteger, TargetFlags(..), TargetTag, dragBegin, dragSourceSetTargetList
+        , dragDataGet, selectionDataSetText, Widget, notebookChildReorderable, notebookChildDetachable
+        , notebookSetTabDetachable, notebookSetTabReorderable, )
 import System.Glib.MainLoop (priorityDefaultIdle, idleAdd)
 #if MIN_VERSION_gtk(0,10,5)
 import Graphics.UI.Gtk (Underline(..))
@@ -380,22 +386,85 @@ markRefInSourceBuf index buf logRef scrollTo = do
                 return False) priorityDefaultIdle
             return ()
 
+
+
 newTextBuffer :: PanePath -> String -> Maybe FilePath -> IDEM (Maybe IDEBuffer)
 newTextBuffer panePath bn mbfn = do
+    liftIO $ putStrLn "newTextBuffer called"
     cont <- case mbfn of
                 Nothing -> return True
                 Just fn -> liftIO $ doesFileExist fn
     if cont
         then do
             nb      <-  getNotebook panePath
+            liftIO $ addDragNDrop $ castToWidget nb
+
+
+            -- buid Pane
             prefs   <-  readIDE prefs
             bs      <-  getCandyState
             ct      <-  readIDE candy
             (ind,rbn) <- figureOutPaneName bn 0
-            buildThisPane panePath nb (builder' bs mbfn ind bn rbn ct prefs)
+            mbIDEBuffer <- buildThisPane panePath nb (builder' bs mbfn ind bn rbn ct prefs)
+            case mbIDEBuffer of
+                Just buffer -> liftIO $ do
+                    let widget = castToWidget $ scrolledWindow buffer
+                    set nb [notebookChildDetachable := True]
+                    set nb [notebookChildReorderable := True]
+                    notebookSetTabReorderable nb widget True
+                    notebookSetTabDetachable nb widget True
+                _ -> return()
+            return mbIDEBuffer
         else do
             ideMessage Normal ("File does not exist " ++ (fromJust mbfn))
             return Nothing
+
+--TODO delete and occurences
+addDragNDrop :: Widget -> IO ()
+addDragNDrop widget = do
+    return ()
+--    --Drag&Drop
+--        dragDestSet
+--                widget
+--                [DestDefaultDrop --GTK+, during a drag over this widget will check if the drag matches this widget's list of possible targets and actions. GTK+ will then call Graphics.UI.Gtk.Gdk.Drag.dragStatus as appropriate.
+--                ,DestDefaultHighlight -- GTK+ will draw a highlight on this widget as long as a drag is over this widget and the widget drag format and action are acceptable.
+--                ,DestDefaultMotion -- GTK+ will will check if the drag matches this widget's list of possible targets and actions. If so, GTK+ will call Graphics.UI.Gtk.Gdk.Drag.dragGetData on behalf of the widget. Whether or not the drop is successful, GTK+ will call Graphics.UI.Gtk.Gdk.Drag.dragFinish. If the action was a move, then if the drag was successful, then True will be passed for the delete parameter to Graphics.UI.Gtk.Gdk.Drag.dragFinish
+--                ]
+--                [ActionMove]
+--    -- Drag
+--        dragSourceSet widget [] [ActionMove]
+--        targetList <- targetListNew
+--        targetListAdd targetList selectionTypeInteger [TargetSameApp] 0
+--        dragSourceSetTargetList widget targetList
+--        on widget dragDataGet $ \context infoId timeStamp -> do
+--            liftIO $ putStrLn "dragDataGet called"
+--            success <- selectionDataSetText "10" --TODO replace by page number
+--            liftIO $ putStrLn $ "setting text successful?: " ++ show success
+--            return ()
+--        --debug
+--        on widget dragBegin $ \context -> do
+--            putStrLn "dragBegin called"
+--
+--
+----ActionDefault: Initialisation value, should not be used.
+----ActionCopy: Copy the data.
+----ActionMove: Move the data, i.e. first copy it, then delete it from the source.
+----ActionLink: Add a link to the data. Note that this is only useful if source and destination agree on what it means.
+----ActionPrivate: Special action which tells the source that the destination will do something that the source doesn't understand.
+----ActionAsk: Ask the user what to do with the data
+--
+--        -- Drop
+--        liftIO $ on widget dragDataReceived $ \context point infoId timeStamp -> do
+--            liftIO $ putStrLn "dragDataReceived called"
+--            content <- ask
+--            liftIO $ dragFinish context True True timeStamp
+--            return ()
+--        liftIO $ on widget dragDrop $ \context point timeStamp -> do
+--            putStrLn "dragDrop called"
+--            dragFinish context True True timeStamp
+--            return True
+--        return ()
+--        --(DragContext -> Point -> InfoId -> TimeStamp -> SelectionDataM ())
 
 data CharacterCategory = IdentifierCharacter | SpaceCharacter | SyntaxCharacter
     deriving (Eq)
@@ -418,6 +487,7 @@ builder' :: Bool ->
     Gtk.Window ->
     IDEM (Maybe IDEBuffer,Connections)
 builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
+    liftIO $ putStrLn "builder' called"
     ideR <- ask
     -- load up and display a file
     (fileContents,modTime) <- case mbfn of
@@ -470,6 +540,7 @@ builder' bs mbfn ind bn rbn ct prefs pp nb windows = do
         scrolledWindow = sw,
         modTime = modTimeRef,
         mode = mod}
+    liftIO $ addDragNDrop $ castToWidget sw
     -- events
     ids1 <- sv `afterFocusIn` makeActive buf
     ids2 <- onCompletion sv (do
