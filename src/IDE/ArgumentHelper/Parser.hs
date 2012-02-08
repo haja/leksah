@@ -1,13 +1,17 @@
 module IDE.ArgumentHelper.Parser (
     parseArgumentsFromMethodDeclaration
+    , ArgumentType (..)
 ) where
 
 import Language.Haskell.Exts
 import Data.String.Utils (replace)
 
 
+data ArgumentType = ArgumentTypePlain String | ArgumentTypeTuple [ArgumentType]
+
+
 -- | Return all arguments of given method declaration.
-parseArgumentsFromMethodDeclaration :: String -> [String]
+parseArgumentsFromMethodDeclaration :: String -> [ArgumentType]
 parseArgumentsFromMethodDeclaration methodName = case
     ((parseDeclWithMode defaultParseMode{extensions = [OverlappingInstances,
             UndecidableInstances,
@@ -72,20 +76,27 @@ parseArgumentsFromMethodDeclaration methodName = case
             XmlSyntax,
             RegularPatterns,
             TupleSections]} $ filterDisallowed methodName)
+        -- TODO parsing fails if no <methodName> :: is contained (e.g. fold)
         >>= parseArgumentsFromDecl)
             of
                 ParseOk fnTypes -> init fnTypes -- we do not want the return type
-                ParseFailed _ _ -> ["parsing failed"]
+                ParseFailed _ _ -> [ArgumentTypePlain "parsing failed"]
 
 
-parseArgumentsFromDecl :: Decl -> ParseResult [String]
-parseArgumentsFromDecl (TypeSig _ _ ty) = return $ map prettyPrint $ parseTyFun ty
+parseArgumentsFromDecl :: Decl -> ParseResult [ArgumentType]
+parseArgumentsFromDecl (TypeSig _ _ ty) = return $ map makeArgumentType $ parseTyFun ty
+
 
 parseTyFun :: Type -> [Type]
 parseTyFun (TyFun t1 t2) = t1:(parseTyFun t2)
 parseTyFun (TyForall _ _ t) = parseTyFun t
 parseTyFun (TyInfix t1 _ t2) = parseTyFun t2
 parseTyFun t = [t]
+
+
+makeArgumentType :: Type -> ArgumentType
+makeArgumentType (TyTuple _ types) = ArgumentTypeTuple $ map makeArgumentType types
+makeArgumentType t                 = ArgumentTypePlain $ prettyPrint t
 
 
 filterDisallowed :: String -> String

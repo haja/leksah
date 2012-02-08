@@ -225,18 +225,15 @@ saveMethodDecls mDecls = do
     modifyIDE_ $ \ide -> ide{argsHelperMethodDecls = mDecls}
     return ()
 
-addArgumentsToSourceView' :: EditorBuffer -> [String] -> IDEAction
+addArgumentsToSourceView' :: EditorBuffer -> [Parser.ArgumentType] -> IDEAction
 addArgumentsToSourceView' buffer argTypes = do
     -- save start of arguments
     sI <- getInsertIter buffer
     start <- createMark buffer sI True
     end <- createMark buffer sI False
-    -- TODO simplify this in one map?
-    marksList <- mapM (\str -> do
-        insertIter <- getInsertIter buffer
-        insert buffer insertIter " "
-        insertTextWithMarks buffer str
-        ) argTypes
+
+    marksListList <- mapM (insertArgument buffer " ") argTypes
+    let marksList = foldl (++) [] marksListList -- flatten lists
     case (marksList) of
         [] -> do
             liftIO $ putStrLn "no marks"
@@ -246,6 +243,24 @@ addArgumentsToSourceView' buffer argTypes = do
             saveMarks (Just curMarks, newMarks, start, end)
             mapM_ (highlightBetweenMarks buffer) marksList
             setFocusBetweenMarks buffer curMarks
+
+insertArgument :: EditorBuffer -> String -> Parser.ArgumentType -> IDEM [(EditorMark, EditorMark)]
+insertArgument buffer spacing (Parser.ArgumentTypePlain arg)      = do
+    insertIter <- getInsertIter buffer
+    insert buffer insertIter spacing
+    marks <- insertTextWithMarks buffer arg
+    return [marks]
+-- there should be at least one argType
+insertArgument buffer spacing (Parser.ArgumentTypeTuple (firstArg:argTypes)) = do
+    insertIter <- getInsertIter buffer
+    insert buffer insertIter $ spacing ++ "("
+    firstMarks <- insertArgument buffer "" firstArg
+    otherMarksList <- mapM (insertArgument buffer ", ") argTypes
+    -- flatten lists
+    let allMarks = foldl (++) [] (firstMarks:otherMarksList)
+    insertIterN <- getInsertIter buffer
+    insert buffer insertIterN ")"
+    return allMarks
 
 
 -- TODO implement this method
