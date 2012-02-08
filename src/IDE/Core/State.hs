@@ -151,7 +151,7 @@ instance PaneMonad IDEM where
                             Just it -> False
                 if b1 && b2
                     then do
-                        notebookInsertOrdered notebook (getTopWidget buf) (paneName buf) Nothing False
+                        notebookInsertOrdered notebook (getTopWidget buf) (paneName buf) Nothing False Nothing
                         addPaneAdmin buf cids panePath
                         liftIO $ do
                             widgetSetName (getTopWidget buf) (paneName buf)
