@@ -12,7 +12,7 @@ data ArgumentType = ArgumentTypePlain String | ArgumentTypeTuple [ArgumentType]
 
 -- | Return all arguments of given method declaration.
 parseArgumentsFromMethodDeclaration :: String -> [ArgumentType]
-parseArgumentsFromMethodDeclaration methodName = case
+parseArgumentsFromMethodDeclaration methodSig = case
     ((parseDeclWithMode defaultParseMode{extensions = [OverlappingInstances,
             UndecidableInstances,
             IncoherentInstances,
@@ -75,7 +75,7 @@ parseArgumentsFromMethodDeclaration methodName = case
             ViewPatterns,
             XmlSyntax,
             RegularPatterns,
-            TupleSections]} $ filterDisallowed methodName)
+            TupleSections]} $ removeAllAfterEqualSign $ filterDisallowed methodSig)
         -- TODO parsing fails if no <methodName> :: is contained (e.g. fold)
         >>= parseArgumentsFromDecl)
             of
@@ -102,6 +102,11 @@ makeArgumentType t                 = ArgumentTypePlain $ prettyPrint t
 filterDisallowed :: String -> String
 filterDisallowed = replace "<document comment>" ""
 
+-- WORKAROUND for buggy methodDecl containing actual code
+removeAllAfterEqualSign :: String -> String
+removeAllAfterEqualSign (x:xs)
+    | x == '='  = ""
+    | otherwise = (x:(removeAllAfterEqualSign xs))
 
 
 --parseTyFun (TyTuple _ typeList) =
