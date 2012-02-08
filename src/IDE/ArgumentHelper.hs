@@ -44,6 +44,11 @@ import IDE.CompletionHelper
 
 
 
+-- TODO remove this import + debugging output
+import Language.Haskell.Exts
+
+
+
 -- | Open a new argument helper popup window.
 initArgumentHelper :: String -- ^ Function name
         -> EditorView
