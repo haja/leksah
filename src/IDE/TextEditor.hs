@@ -57,6 +57,7 @@ module IDE.TextEditor (
 ,   insert
 ,   moveMark
 ,   newView
+,   newViewWithoutScrolledWindow
 ,   pasteClipboard
 ,   placeCursor
 ,   redo
@@ -476,7 +477,20 @@ moveMark _ _ _ = liftIO $ fail "Mismatching TextEditor types in moveMark"
 #endif
 
 newView :: EditorBuffer -> Maybe String -> IDEM EditorView
-newView (GtkEditorBuffer sb) mbFontString = do
+newView buffer mbFontString = do
+    (GtkEditorView sv) <- newViewWithoutScrolledWindow buffer mbFontString
+    liftIO $ do
+        sw <- Gtk.scrolledWindowNew Nothing Nothing
+        Gtk.containerAdd sw sv
+        return (GtkEditorView sv)
+#ifdef LEKSAH_WITH_YI
+newView (YiEditorBuffer b) mbFontString = do
+    fd <- fontDescription mbFontString
+    liftYiControl $ fmap YiEditorView $ Yi.newView b fd
+#endif
+
+newViewWithoutScrolledWindow :: EditorBuffer -> Maybe String -> IDEM EditorView
+newViewWithoutScrolledWindow (GtkEditorBuffer sb) mbFontString = do
     prefs <- readIDE prefs
     fd <- fontDescription mbFontString
     liftIO $ do
@@ -489,15 +503,8 @@ newView (GtkEditorBuffer sb) mbFontString = do
         if wrapLines prefs
             then Gtk.textViewSetWrapMode sv Gtk.WrapWord
             else Gtk.textViewSetWrapMode sv Gtk.WrapNone
-        sw <- Gtk.scrolledWindowNew Nothing Nothing
-        Gtk.containerAdd sw sv
         Gtk.widgetModifyFont sv (Just fd)
         return (GtkEditorView sv)
-#ifdef LEKSAH_WITH_YI
-newView (YiEditorBuffer b) mbFontString = do
-    fd <- fontDescription mbFontString
-    liftYiControl $ fmap YiEditorView $ Yi.newView b fd
-#endif
 
 pasteClipboard :: EditorBuffer
                   -> Gtk.Clipboard
