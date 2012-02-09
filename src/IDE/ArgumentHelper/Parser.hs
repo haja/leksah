@@ -107,6 +107,7 @@ removeAllAfterEqualSign :: String -> String
 removeAllAfterEqualSign (x:xs)
     | x == '='  = ""
     | otherwise = (x:(removeAllAfterEqualSign xs))
+removeAllAfterEqualSign "" = ""
 
 
 --parseTyFun (TyTuple _ typeList) =
