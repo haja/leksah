@@ -44,13 +44,8 @@ import IDE.CompletionHelper
 
 
 
--- TODO remove this import + debugging output
-import Language.Haskell.Exts
-
-
 -- | various defs
 tagName = "arg_helper_highlight" -- tag name for highlighting
-
 
 
 
