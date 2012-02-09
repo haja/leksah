@@ -135,7 +135,7 @@ registerHandler window sourceView = do
                 )
         case (name, modifier) of
             ("Return", _) -> closeIfVisible
-            ("Escape", _) -> closeIfVisible
+            ("Escape", _) -> removeArgumentsFromSourceView buffer >> closeIfVisible -- TODO verify that this is desired behavior
             ("Tab", _) -> focusNextMarks cycleList >> return True
             ("ISO_Left_Tab", _) -> focusNextMarks cycleListBackwards >> return True
             ("Up", _) -> cycleToPrevMethodType window buffer >> return True
