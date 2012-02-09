@@ -19,6 +19,7 @@ module IDE.Metainfo.Provider (
 ,   getIdentifiersStartingWith
 ,   getCompletionOptions
 ,   getDescription
+,   getDescriptionList
 ,   getActivePackageDescr
 ,   searchMeta
 
@@ -514,6 +515,16 @@ getDescription name = do
         Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
             return ((foldr (\d f -> shows (Present d) .  showChar '\n' . f) id
                 (getIdentifierDescr name symbolTable1 symbolTable2)) "")
+
+getDescriptionList :: String -> IDEM [String]
+getDescriptionList name = do
+    workspaceInfo' <- getWorkspaceInfo
+    case workspaceInfo' of
+        Nothing -> return [""]
+        Just ((GenScopeC (PackScope _ symbolTable1)),(GenScopeC (PackScope _ symbolTable2))) ->
+            return (map (\alpha -> show (Present alpha))
+                (getIdentifierDescr name symbolTable1 symbolTable2))
+
 
 getPackageInfo :: IDEM (Maybe (GenScope, GenScope))
 getPackageInfo   =  readIDE packageInfo
