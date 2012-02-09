@@ -79,12 +79,14 @@ parseArgumentsFromMethodDeclaration methodSig = case
         -- TODO parsing fails if no <methodName> :: is contained (e.g. fold)
         >>= parseArgumentsFromDecl)
             of
+                ParseOk [] -> []
                 ParseOk fnTypes -> init fnTypes -- we do not want the return type
                 ParseFailed _ _ -> [ArgumentTypePlain "parsing failed"]
 
 
 parseArgumentsFromDecl :: Decl -> ParseResult [ArgumentType]
 parseArgumentsFromDecl (TypeSig _ _ ty) = return $ map makeArgumentType $ parseTyFun ty
+parseArgumentsFromDecl _ = return [] -- TODO implement correctly
 
 
 parseTyFun :: Type -> [Type]
