@@ -48,6 +48,11 @@ import IDE.CompletionHelper
 import Language.Haskell.Exts
 
 
+-- | various defs
+tagName = "arg_helper_highlight" -- tag name for highlighting
+
+
+
 
 -- | Open a new argument helper popup window.
 initArgumentHelper :: String -- ^ Function name
@@ -109,6 +114,7 @@ registerHandler window sourceView = do
         let closeIfVisible = (do
                 visible <- liftIO $ Gtk.get window Gtk.widgetVisible
                 if visible then (do
+                        highlightRemoveAll buffer
                         liftIO $ Gtk.widgetDestroy window
                         connections <- readIDE argsHelperConnections
                         liftIO $ signalDisconnectAll connections
@@ -244,7 +250,7 @@ generateSaveableFromList :: [a] -> (Maybe a, [a])
 generateSaveableFromList [] = (Nothing, [])
 generateSaveableFromList (x:xs) = (Just x, xs)
 
--- TODO unify save methods?
+
 saveMethodDecls :: (Maybe String, [String]) -> IDEAction
 saveMethodDecls mDecls = do
     modifyIDE_ $ \ide -> ide{argsHelperMethodDecls = mDecls}
@@ -299,9 +305,28 @@ insertArgument buffer spacing (Parser.ArgumentTypeTuple (firstArg:argTypes)) = d
     return allMarks
 insertArgument _ _ _ = return []
 
--- TODO implement this method
+
 highlightBetweenMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
-highlightBetweenMarks _ _ = return ()
+highlightBetweenMarks buffer (s, e) = do
+    -- get/create highlight-tag
+    tagTable <- getTagTable buffer
+    mbTag <- lookupTag tagTable tagName
+    unless (isJust mbTag) (do
+            t <- newTag tagTable tagName
+            background t $ Gtk.Color 45000 45000 45000 -- some grey value...
+            return ()
+            )
+    -- actual highlighting
+    si <- getIterAtMark buffer s
+    ei <- getIterAtMark buffer e
+    applyTagByName buffer tagName si ei
+
+highlightRemoveAll :: EditorBuffer -> IDEAction
+highlightRemoveAll buffer = do
+    s<- getStartIter buffer
+    e <- getEndIter buffer
+    removeTagByName buffer tagName s e
+
 
 setFocusBetweenMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
 setFocusBetweenMarks buf (start, end) = do
