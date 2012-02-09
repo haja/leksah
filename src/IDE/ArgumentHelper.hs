@@ -57,7 +57,6 @@ initArgumentHelper :: String -- ^ Function name
 initArgumentHelper functionName sourceView (x, y) = do
     liftIO $ putStrLn $ "functionName: " ++ functionName
 
-    -- TODO begin user action somewhere
     window          <- openNewWindow
     descriptions    <- MetaInfoProvider.getDescriptionList functionName
     saveMethodDescs $ generateSaveableFromList descriptions
@@ -232,14 +231,15 @@ addArgumentsToSourceView sourceView functionName = do
 
             buffer <- getBuffer sourceView
             saveMethodDecls $ generateSaveableFromList typeList
-            addArgumentsToSourceView' buffer argTypes
+            unless (typeList == []) (do
+                let argTypes = Parser.parseArgumentsFromMethodDeclaration $ head typeList
+                addArgumentsToSourceView' buffer argTypes
+                )
 
             where mbTypesList = map CTypes.dscMbTypeStr mbDescrList
                   typeList    = map (Char8.unpack . fromJust) $
                                     filter (/= Nothing) mbTypesList
-                  -- TODO rewrite using getDescriptionList from MetaInfo.Provider
                   mbDescrList = MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2
-                  argTypes =    Parser.parseArgumentsFromMethodDeclaration $ head typeList
 
 generateSaveableFromList :: [a] -> (Maybe a, [a])
 generateSaveableFromList [] = (Nothing, [])
