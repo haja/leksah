@@ -59,8 +59,12 @@ initArgumentHelper functionName sourceView (x, y) = do
 
     -- TODO begin user action somewhere
     window          <- openNewWindow
-    description     <- MetaInfoProvider.getDescription functionName
-    addContent window description
+    descriptions    <- MetaInfoProvider.getDescriptionList functionName
+    saveMethodDescs $ generateSaveableFromList descriptions
+    setLayout window
+    updateSelectedMethodDesc window
+
+
 {- TODO only add when at end of line
 (or somehow else check if inserting arguments as text into sourceView is disturbing the workflow) -}
     addArgumentsToSourceView sourceView functionName
@@ -138,8 +142,8 @@ registerHandler window sourceView = do
             ("Escape", _) -> removeArgumentsFromSourceView buffer >> closeIfVisible -- TODO verify that this is desired behavior
             ("Tab", _) -> focusNextMarks cycleList >> return True
             ("ISO_Left_Tab", _) -> focusNextMarks cycleListBackwards >> return True
-            ("Up", _) -> cycleToPrevMethodType window buffer >> return True
-            ("Down", _) -> cycleToNextMethodType window buffer >> return True
+            ("Up", _) -> cycleToMethodType window buffer cycleListBackwards >> return True
+            ("Down", _) -> cycleToMethodType window buffer cycleList >> return True
             -- don't signal that these keys have been handled:
             ("Control_L", _) -> closeIfVisible >> return False
             ("Control_R", _) -> closeIfVisible >> return False
@@ -148,19 +152,40 @@ registerHandler window sourceView = do
     modifyIDE_ $ \ide -> ide{argsHelperConnections = connections}
     return ()
 
--- TODO change window to highlight selected method decl
-cycleToNextMethodType :: Gtk.Window -> EditorBuffer -> IDEAction
-cycleToNextMethodType window buffer = do
+
+cycleToMethodType :: Gtk.Window -> EditorBuffer -> (Maybe String -> [String] -> (Maybe String, [String])) -> IDEAction
+cycleToMethodType window buffer cycleListFn = do
     removeArgumentsFromSourceView buffer
-    (oldDecl, methodDecls) <- readIDE argsHelperMethodDecls
-    let (mbCurDecl, newDecls) = cycleList oldDecl methodDecls
-    saveMethodDecls (mbCurDecl, newDecls)
+    decl@(mbCurDecl, newDecls) <- cycleStrings cycleListFn argsHelperMethodDecls
+    saveMethodDecls decl
+    desc@(mbCurDesc, newDescs) <- cycleStrings cycleListFn argsHelperMethodDescs
+    saveMethodDescs desc
+
     if (isJust mbCurDecl) then
-        addArgumentsToSourceView' buffer $ Parser.parseArgumentsFromMethodDeclaration (fromJust mbCurDecl)
+        updateSelectedMethodDesc window >>
+        (addArgumentsToSourceView' buffer $ Parser.parseArgumentsFromMethodDeclaration (fromJust mbCurDecl))
             else return ()
 
-cycleToPrevMethodType :: Gtk.Window -> EditorBuffer -> IDEAction
-cycleToPrevMethodType _ _ = return ()
+    where cycleStrings cycleFn getter = do
+            (old, othersOld) <- readIDE getter
+            let x = cycleFn old othersOld
+            return x
+
+
+updateSelectedMethodDesc :: Gtk.Window -> IDEAction
+updateSelectedMethodDesc window = do
+    (mbCurDesc, otherDescs) <- readIDE argsHelperMethodDescs
+    if (isJust mbCurDesc) then (do
+        (curBuf, otherBuf)<- getDeclBuffers
+        setText curBuf $ fromJust mbCurDesc
+        setText otherBuf $ unlines otherDescs
+        return ()
+        )
+            else return ()
+
+getDeclBuffers :: IDEM (EditorBuffer, EditorBuffer)
+getDeclBuffers = readIDE argsHelperMethodDescBuffers
+
 
 removeArgumentsFromSourceView :: EditorBuffer -> IDEAction
 removeArgumentsFromSourceView buffer = do
@@ -174,26 +199,22 @@ deleteBetweenMarks buffer s e = do
     eI <- getIterAtMark buffer e
     delete buffer sI eI
 
-addContent :: Gtk.Window -> String -> IDEAction
-addContent window description = do
-    prefs               <- readIDE prefs
-    descriptionBuffer   <- newGtkBuffer Nothing description
-    descriptionView     <- newView descriptionBuffer (textviewFont prefs)
-    _ <- if (Nothing /= (getSourceView descriptionView)) then do
-            --TODO upadte window size on content length (doesn't work yet)
-            (heigth, width)     <- liftIO $ Gtk.widgetGetSize $ fromJust $ getSourceView descriptionView
-            return ()
-        else return ()
+setLayout :: Gtk.Window -> IDEAction
+setLayout window = do
+    prefs                           <- readIDE prefs
+    curDescBuffer                   <- newGtkBuffer Nothing ""
+    (GtkEditorView curDescView)     <- newViewWithoutScrolledWindow curDescBuffer (textviewFont prefs)
 
-    descriptionScrolledWindow <- getScrolledWindow descriptionView
-    liftIO $ Gtk.containerAdd window descriptionScrolledWindow
+    otherDescsBuffer                <- newGtkBuffer Nothing ""
+    (GtkEditorView otherDescsView)  <- newViewWithoutScrolledWindow otherDescsBuffer (textviewFont prefs)
+    saveMethodDescBuffers (curDescBuffer, otherDescsBuffer)
 
+    vbox <- liftIO $ Gtk.vBoxNew False 1
+    liftIO $ Gtk.containerAdd window vbox
+    liftIO $ Gtk.containerAdd vbox curDescView
+    liftIO $ Gtk.containerAdd vbox otherDescsView
+    return ()
 
-getSourceView :: EditorView -> Maybe SourceView
-getSourceView (GtkEditorView s) = Just s
-#ifdef LEKSAH_WITH_YI
-getSourceView YiEditorView _ = Nothing
-#endif
 
 
 addArgumentsToSourceView :: EditorView -> String -> IDEAction
@@ -209,21 +230,36 @@ addArgumentsToSourceView sourceView functionName = do
             liftIO $ putStrLn $ unlines typeList
 
             buffer <- getBuffer sourceView
-            if (typeList == []) then saveMethodDecls (Nothing, [])
-                else saveMethodDecls (Just $ head typeList, init typeList)
+            saveMethodDecls $ generateSaveableFromList typeList
             addArgumentsToSourceView' buffer argTypes
 
             where mbTypesList = map CTypes.dscMbTypeStr mbDescrList
                   typeList    = map (Char8.unpack . fromJust) $
                                     filter (/= Nothing) mbTypesList
+                  -- TODO rewrite using getDescriptionList from MetaInfo.Provider
                   mbDescrList = MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2
                   argTypes =    Parser.parseArgumentsFromMethodDeclaration $ head typeList
 
+generateSaveableFromList :: [a] -> (Maybe a, [a])
+generateSaveableFromList [] = (Nothing, [])
+generateSaveableFromList (x:xs) = (Just x, xs)
 
+-- TODO unify save methods?
 saveMethodDecls :: (Maybe String, [String]) -> IDEAction
 saveMethodDecls mDecls = do
     modifyIDE_ $ \ide -> ide{argsHelperMethodDecls = mDecls}
     return ()
+
+saveMethodDescs :: (Maybe String, [String]) -> IDEAction
+saveMethodDescs mDescs = do
+    modifyIDE_ $ \ide -> ide{argsHelperMethodDescs = mDescs}
+    return ()
+
+saveMethodDescBuffers :: (EditorBuffer, EditorBuffer) -> IDEAction
+saveMethodDescBuffers bufs = do
+    modifyIDE_ $ \ide -> ide{argsHelperMethodDescBuffers = bufs}
+    return ()
+
 
 addArgumentsToSourceView' :: EditorBuffer -> [Parser.ArgumentType] -> IDEAction
 addArgumentsToSourceView' buffer argTypes = do
@@ -245,7 +281,7 @@ addArgumentsToSourceView' buffer argTypes = do
             setFocusBetweenMarks buffer curMarks
 
 insertArgument :: EditorBuffer -> String -> Parser.ArgumentType -> IDEM [(EditorMark, EditorMark)]
-insertArgument buffer spacing (Parser.ArgumentTypePlain arg)      = do
+insertArgument buffer spacing (Parser.ArgumentTypePlain arg) = do
     insertIter <- getInsertIter buffer
     insert buffer insertIter spacing
     marks <- insertTextWithMarks buffer arg
@@ -261,7 +297,7 @@ insertArgument buffer spacing (Parser.ArgumentTypeTuple (firstArg:argTypes)) = d
     insertIterN <- getInsertIter buffer
     insert buffer insertIterN ")"
     return allMarks
-
+insertArgument _ _ _ = return []
 
 -- TODO implement this method
 highlightBetweenMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
