@@ -56,23 +56,18 @@ initArgumentHelper :: String -- ^ Function name
         -> IDEAction
 initArgumentHelper functionName sourceView (x, y) = do
     liftIO $ putStrLn $ "functionName: " ++ functionName
-
     window          <- openNewWindow
     descriptions    <- MetaInfoProvider.getDescriptionList functionName
     saveMethodDescs $ generateSaveableFromList descriptions
     setLayout window
     updateSelectedMethodDesc window
 
-
 {- TODO only add when at end of line
 (or somehow else check if inserting arguments as text into sourceView is disturbing the workflow) -}
     addArgumentsToSourceView sourceView functionName
-
     registerHandler window sourceView
-
     liftIO $ Gtk.windowMove window x y
     liftIO $ Gtk.widgetShowAll window
-
 
 --
 -- | open a new popup window
@@ -81,8 +76,6 @@ openNewWindow :: IDEM (Gtk.Window)
 openNewWindow = do
     let width = 600
     let height = 150
-
-
     windows    <- getWindows
     window     <- liftIO Gtk.windowNewPopup
     liftIO $ Gtk.windowSetTransientFor window (head windows)
@@ -95,6 +88,25 @@ openNewWindow = do
                  ]
     liftIO $ Gtk.containerSetBorderWidth window 1
     return window
+
+--
+-- | Set Layout for documentation window
+--
+setLayout :: Gtk.Window -> IDEAction
+setLayout window = do
+    prefs                           <- readIDE prefs
+    curDescBuffer                   <- newGtkBuffer Nothing ""
+    (GtkEditorView curDescView)     <- newViewWithoutScrolledWindow curDescBuffer (textviewFont prefs)
+
+    otherDescsBuffer                <- newGtkBuffer Nothing ""
+    (GtkEditorView otherDescsView)  <- newViewWithoutScrolledWindow otherDescsBuffer (textviewFont prefs)
+    saveMethodDescBuffers (curDescBuffer, otherDescsBuffer)
+
+    vbox <- liftIO $ Gtk.vBoxNew False 1
+    liftIO $ Gtk.containerAdd window vbox
+    liftIO $ Gtk.containerAdd vbox curDescView
+    liftIO $ Gtk.containerAdd vbox otherDescsView
+    return ()
 
 --
 -- TODO register mouseclicks to close window
@@ -153,6 +165,7 @@ registerHandler window sourceView = do
     return ()
 
 
+-- | Cycles through available types for given function name using given @cycleListFn@.
 cycleToMethodType :: Gtk.Window -> EditorBuffer -> (Maybe String -> [String] -> (Maybe String, [String])) -> IDEAction
 cycleToMethodType window buffer cycleListFn = do
     removeArgumentsFromSourceView buffer
@@ -187,35 +200,9 @@ getDeclBuffers :: IDEM (EditorBuffer, EditorBuffer)
 getDeclBuffers = readIDE argsHelperMethodDescBuffers
 
 
-removeArgumentsFromSourceView :: EditorBuffer -> IDEAction
-removeArgumentsFromSourceView buffer = do
-    (_, _, start, end) <- readIDE argsHelperMarks
-    deleteBetweenMarks buffer start end
-
-
-deleteBetweenMarks :: EditorBuffer -> EditorMark -> EditorMark -> IDEAction
-deleteBetweenMarks buffer s e = do
-    sI <- getIterAtMark buffer s
-    eI <- getIterAtMark buffer e
-    delete buffer sI eI
-
-setLayout :: Gtk.Window -> IDEAction
-setLayout window = do
-    prefs                           <- readIDE prefs
-    curDescBuffer                   <- newGtkBuffer Nothing ""
-    (GtkEditorView curDescView)     <- newViewWithoutScrolledWindow curDescBuffer (textviewFont prefs)
-
-    otherDescsBuffer                <- newGtkBuffer Nothing ""
-    (GtkEditorView otherDescsView)  <- newViewWithoutScrolledWindow otherDescsBuffer (textviewFont prefs)
-    saveMethodDescBuffers (curDescBuffer, otherDescsBuffer)
-
-    vbox <- liftIO $ Gtk.vBoxNew False 1
-    liftIO $ Gtk.containerAdd window vbox
-    liftIO $ Gtk.containerAdd vbox curDescView
-    liftIO $ Gtk.containerAdd vbox otherDescsView
-    return ()
-
-
+-- -----
+-- Arguments
+-- -----
 
 addArgumentsToSourceView :: EditorView -> String -> IDEAction
 #ifdef LEKSAH_WITH_YI
@@ -241,26 +228,6 @@ addArgumentsToSourceView sourceView functionName = do
                                     filter (/= Nothing) mbTypesList
                   mbDescrList = MetaInfoProvider.getIdentifierDescr functionName symbolTable1 symbolTable2
 
-generateSaveableFromList :: [a] -> (Maybe a, [a])
-generateSaveableFromList [] = (Nothing, [])
-generateSaveableFromList (x:xs) = (Just x, xs)
-
-
-saveMethodDecls :: (Maybe String, [String]) -> IDEAction
-saveMethodDecls mDecls = do
-    modifyIDE_ $ \ide -> ide{argsHelperMethodDecls = mDecls}
-    return ()
-
-saveMethodDescs :: (Maybe String, [String]) -> IDEAction
-saveMethodDescs mDescs = do
-    modifyIDE_ $ \ide -> ide{argsHelperMethodDescs = mDescs}
-    return ()
-
-saveMethodDescBuffers :: (EditorBuffer, EditorBuffer) -> IDEAction
-saveMethodDescBuffers bufs = do
-    modifyIDE_ $ \ide -> ide{argsHelperMethodDescBuffers = bufs}
-    return ()
-
 
 addArgumentsToSourceView' :: EditorBuffer -> [Parser.ArgumentType] -> IDEAction
 addArgumentsToSourceView' buffer argTypes = do
@@ -280,6 +247,8 @@ addArgumentsToSourceView' buffer argTypes = do
             saveMarks (Just curMarks, newMarks, start, end)
             mapM_ (highlightBetweenMarks buffer) marksList
             setFocusBetweenMarks buffer curMarks
+
+
 
 insertArgument :: EditorBuffer -> String -> Parser.ArgumentType -> IDEM [(EditorMark, EditorMark)]
 insertArgument buffer spacing (Parser.ArgumentTypePlain arg) = do
@@ -301,27 +270,15 @@ insertArgument buffer spacing (Parser.ArgumentTypeTuple (firstArg:argTypes)) = d
 insertArgument _ _ _ = return []
 
 
-highlightBetweenMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
-highlightBetweenMarks buffer (s, e) = do
-    -- get/create highlight-tag
-    tagTable <- getTagTable buffer
-    mbTag <- lookupTag tagTable tagName
-    unless (isJust mbTag) (do
-            t <- newTag tagTable tagName
-            background t $ Gtk.Color 45000 45000 45000 -- some grey value...
-            return ()
-            )
-    -- actual highlighting
-    si <- getIterAtMark buffer s
-    ei <- getIterAtMark buffer e
-    applyTagByName buffer tagName si ei
+removeArgumentsFromSourceView :: EditorBuffer -> IDEAction
+removeArgumentsFromSourceView buffer = do
+    (_, _, start, end) <- readIDE argsHelperMarks
+    deleteBetweenMarks buffer start end
 
-highlightRemoveAll :: EditorBuffer -> IDEAction
-highlightRemoveAll buffer = do
-    s<- getStartIter buffer
-    e <- getEndIter buffer
-    removeTagByName buffer tagName s e
 
+-- -----
+-- Marks
+-- -----
 
 setFocusBetweenMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
 setFocusBetweenMarks buf (start, end) = do
@@ -345,11 +302,68 @@ insertTextWithMarks buffer str = do
     endMark <- createMark buffer endIter True
     return (startMark, endMark)
 
+deleteBetweenMarks :: EditorBuffer -> EditorMark -> EditorMark -> IDEAction
+deleteBetweenMarks buffer s e = do
+    sI <- getIterAtMark buffer s
+    eI <- getIterAtMark buffer e
+    delete buffer sI eI
+
+
+-- -----
+-- Highlighting
+-- -----
+
+highlightBetweenMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
+highlightBetweenMarks buffer (s, e) = do
+    -- get/create highlight-tag
+    tagTable <- getTagTable buffer
+    mbTag <- lookupTag tagTable tagName
+    unless (isJust mbTag) (do
+            t <- newTag tagTable tagName
+            background t $ Gtk.Color 45000 45000 45000 -- some grey value...
+            return ()
+            )
+    -- actual highlighting
+    si <- getIterAtMark buffer s
+    ei <- getIterAtMark buffer e
+    applyTagByName buffer tagName si ei
+
+highlightRemoveAll :: EditorBuffer -> IDEAction
+highlightRemoveAll buffer = do
+    s<- getStartIter buffer
+    e <- getEndIter buffer
+    removeTagByName buffer tagName s e
+
+
+-- -----
+-- Save helpers
+-- -----
+
 -- | Saves given marks to the IDE state.
 saveMarks :: (Maybe (EditorMark, EditorMark), [(EditorMark, EditorMark)], EditorMark, EditorMark) -> IDEAction
 saveMarks marks = do
     modifyIDE_ $ \ide -> ide{argsHelperMarks = marks}
     return ()
+
+saveMethodDecls :: (Maybe String, [String]) -> IDEAction
+saveMethodDecls mDecls = do
+    modifyIDE_ $ \ide -> ide{argsHelperMethodDecls = mDecls}
+    return ()
+
+saveMethodDescs :: (Maybe String, [String]) -> IDEAction
+saveMethodDescs mDescs = do
+    modifyIDE_ $ \ide -> ide{argsHelperMethodDescs = mDescs}
+    return ()
+
+saveMethodDescBuffers :: (EditorBuffer, EditorBuffer) -> IDEAction
+saveMethodDescBuffers bufs = do
+    modifyIDE_ $ \ide -> ide{argsHelperMethodDescBuffers = bufs}
+    return ()
+
+
+-- -----
+-- Various helpers
+-- -----
 
 cycleList :: Maybe a -> [a] -> (Maybe a, [a])
 cycleList Nothing _ = (Nothing, [])
@@ -360,6 +374,10 @@ cycleListBackwards :: Maybe a -> [a] -> (Maybe a, [a])
 cycleListBackwards Nothing _ = (Nothing, [])
 cycleListBackwards mbX [] = (mbX, [])
 cycleListBackwards (Just oldCur) l = (Just $ last l, (oldCur):(init l))
+
+generateSaveableFromList :: [a] -> (Maybe a, [a])
+generateSaveableFromList [] = (Nothing, [])
+generateSaveableFromList (x:xs) = (Just x, xs)
 
 -- | Helper function to print marks to console
 printMarks :: EditorBuffer -> (EditorMark, EditorMark) -> IDEAction
