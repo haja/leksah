@@ -59,7 +59,7 @@ initArgumentHelper functionName sourceView (x, y) = do
     window          <- openNewWindow
     descriptions    <- MetaInfoProvider.getDescriptionList functionName
     saveMethodDescs $ generateSaveableFromList descriptions
-    setLayout window
+    setWindowLayout window
     updateSelectedMethodDesc window
 
 {- TODO only add when at end of line
@@ -92,8 +92,8 @@ openNewWindow = do
 --
 -- | Set Layout for documentation window
 --
-setLayout :: Gtk.Window -> IDEAction
-setLayout window = do
+setWindowLayout :: Gtk.Window -> IDEAction
+setWindowLayout window = do
     prefs                           <- readIDE prefs
     curDescBuffer                   <- newGtkBuffer Nothing ""
     (GtkEditorView curDescView)     <- newViewWithoutScrolledWindow curDescBuffer (textviewFont prefs)
@@ -189,15 +189,15 @@ updateSelectedMethodDesc :: Gtk.Window -> IDEAction
 updateSelectedMethodDesc window = do
     (mbCurDesc, otherDescs) <- readIDE argsHelperMethodDescs
     if (isJust mbCurDesc) then (do
-        (curBuf, otherBuf)<- getDeclBuffers
+        (curBuf, otherBuf)<- getDescBuffers
         setText curBuf $ fromJust mbCurDesc
         setText otherBuf $ unlines otherDescs
         return ()
         )
             else return ()
 
-getDeclBuffers :: IDEM (EditorBuffer, EditorBuffer)
-getDeclBuffers = readIDE argsHelperMethodDescBuffers
+getDescBuffers :: IDEM (EditorBuffer, EditorBuffer)
+getDescBuffers = readIDE argsHelperMethodDescBuffers
 
 
 -- -----
