@@ -171,6 +171,7 @@ data IDE            =  IDE {
 ,   argsHelperMethodDecls :: (Maybe String, [String])
 ,   argsHelperMethodDescs :: (Maybe String, [String])
 ,   argsHelperMethodDescBuffers :: (EditorBuffer, EditorBuffer)
+,   argsHelperDoInsertArguments :: Bool
 ,   yiControl       ::   Yi.Control
 ,   server          ::   Maybe Handle
 ,   vcsData         ::   (Map FilePath MenuItem, Maybe (Maybe String)) -- menus for packages, password

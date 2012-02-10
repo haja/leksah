@@ -62,8 +62,10 @@ initArgumentHelper functionName sourceView (x, y) = do
     setWindowLayout window
     updateSelectedMethodDesc window
 
-{- TODO only add when at end of line
+{- only add when at end of line
 (or somehow else check if inserting arguments as text into sourceView is disturbing the workflow) -}
+    doInsertArguments <- getBuffer sourceView >>= getInsertIter >>= endsLine
+    saveDoInsertArguments doInsertArguments
     addArgumentsToSourceView sourceView functionName
     registerHandler window sourceView
     liftIO $ Gtk.windowMove window x y
@@ -235,19 +237,22 @@ addArgumentsToSourceView' buffer argTypes = do
     sI <- getInsertIter buffer
     start <- createMark buffer sI True
     end <- createMark buffer sI False
+    saveMarks (Nothing, [], start, end)
 
-    marksListList <- mapM (insertArgument buffer " ") argTypes
-    let marksList = foldl (++) [] marksListList -- flatten lists
-    case (marksList) of
-        [] -> do
-            liftIO $ putStrLn "no marks"
-            saveMarks (Nothing, [], start, end)
-            return ()
-        (curMarks:newMarks) -> do
-            saveMarks (Just curMarks, newMarks, start, end)
-            mapM_ (highlightBetweenMarks buffer) marksList
-            setFocusBetweenMarks buffer curMarks
+    doInsert <- readIDE argsHelperDoInsertArguments
+    when doInsert (do
 
+        marksListList <- mapM (insertArgument buffer " ") argTypes
+        let marksList = foldl (++) [] marksListList -- flatten lists
+        case (marksList) of
+            [] -> do
+                liftIO $ putStrLn "no marks"
+                saveMarks (Nothing, [], start, end)
+                return ()
+            (curMarks:newMarks) -> do
+                saveMarks (Just curMarks, newMarks, start, end)
+                mapM_ (highlightBetweenMarks buffer) marksList
+                setFocusBetweenMarks buffer curMarks)
 
 
 insertArgument :: EditorBuffer -> String -> Parser.ArgumentType -> IDEM [(EditorMark, EditorMark)]
@@ -360,6 +365,10 @@ saveMethodDescBuffers bufs = do
     modifyIDE_ $ \ide -> ide{argsHelperMethodDescBuffers = bufs}
     return ()
 
+saveDoInsertArguments :: Bool -> IDEAction
+saveDoInsertArguments doInsertArguments = do
+    modifyIDE_ $ \ide -> ide{argsHelperDoInsertArguments = doInsertArguments}
+    return ()
 
 -- -----
 -- Various helpers
