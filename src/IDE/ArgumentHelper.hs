@@ -118,28 +118,27 @@ registerHandler window sourceView = do
                         liftIO $ Gtk.widgetDestroy window
                         connections <- readIDE argsHelperConnections
                         liftIO $ signalDisconnectAll connections
-                        (mbCurMarks, marks, start, end) <- readIDE argsHelperMarks
-                        if (isJust mbCurMarks) then
-                            (mapM_ (\(m1, m2) -> do
+                        mbMarks <- readIDE argsHelperMarks
+                        when (isJust mbMarks) (do
+                            let (curMarks, marks, start, end) = fromJust mbMarks
+                            mapM_ (\(m1, m2) -> do
                                 deleteMark buffer m1
-                                deleteMark buffer m2) ((fromJust mbCurMarks):(start, end):marks))
-                            else
-                                (mapM_ (\(m1, m2) -> do
-                                    deleteMark buffer m1
-                                    deleteMark buffer m2) ((start, end):marks))
+                                deleteMark buffer m2)
+                                    ((curMarks):(start, end):marks)
+                            )
                         return True
                     )
                     else return False
                 )
         let focusNextMarks cycleListFn = (do
                 liftIO $ putStrLn "focusNextMarks called"
-                (curMarks, marks, s, e) <- readIDE argsHelperMarks
-                case (marks) of
-                    [] -> return False
-                    _ -> do
-                        let (Just nextMarks, newMarks) = cycleListFn curMarks marks
+                mbMarks <- readIDE argsHelperMarks
+                case (mbMarks) of
+                    Nothing -> return False
+                    (Just (curMarks, marks, s, e)) -> do
+                        let (Just nextMarks, newMarks) = cycleListFn (Just curMarks) marks
                         printMarks buffer nextMarks -- debug output
-                        modifyIDE_ $ \ide -> ide{argsHelperMarks = (Just nextMarks, newMarks, s, e)}
+                        modifyIDE_ $ \ide -> ide{argsHelperMarks = Just (nextMarks, newMarks, s, e)}
                         setFocusBetweenMarks buffer nextMarks
                         return True
                 )
@@ -203,6 +202,7 @@ addArgumentsToSourceView :: EditorView -> String -> IDEAction
 addArgumentsToSourceView _ _ = saveMarks [] >> return ()
 #endif
 addArgumentsToSourceView sourceView functionName = do
+    saveMarks Nothing -- create record field in any case
     workspaceInfo' <- MetaInfoProvider.getWorkspaceInfo
     case workspaceInfo' of
         Nothing -> return ()
@@ -225,23 +225,21 @@ addArgumentsToSourceView sourceView functionName = do
 
 addArgumentsToSourceView' :: EditorBuffer -> [Parser.ArgumentType] -> IDEAction
 addArgumentsToSourceView' buffer argTypes = do
-    -- save start of arguments
-    sI <- getInsertIter buffer
-    start <- createMark buffer sI True
-    end <- createMark buffer sI False
-    saveMarks (Nothing, [], start, end)
-
     doInsert <- readIDE argsHelperDoInsertArguments
     when doInsert (do
+        -- save start of arguments
+        sI <- getInsertIter buffer
+        start <- createMark buffer sI True
+        end <- createMark buffer sI False
         marksListList <- mapM (insertArgument buffer " ") argTypes
         let marksList = foldl (++) [] marksListList -- flatten lists
         case (marksList) of
             [] -> do
                 liftIO $ putStrLn "no marks"
-                saveMarks (Nothing, [], start, end)
+                saveMarks Nothing
                 return ()
             (curMarks:newMarks) -> do
-                saveMarks (Just curMarks, newMarks, start, end)
+                saveMarks $ Just (curMarks, newMarks, start, end)
                 mapM_ (highlightBetweenMarks buffer) marksList
                 setFocusBetweenMarks buffer curMarks)
 
@@ -268,10 +266,10 @@ insertArgument _ _ _ = return []
 
 removeArgumentsFromSourceView :: EditorBuffer -> IDEAction
 removeArgumentsFromSourceView buffer = do
-    doInsert <- readIDE argsHelperDoInsertArguments
-    when doInsert (do
-        (_, _, start, end) <- readIDE argsHelperMarks
-        deleteBetweenMarks buffer start end)
+    mbMarks <- readIDE argsHelperMarks
+    case mbMarks of
+        (Just (_, _, start, end)) -> deleteBetweenMarks buffer start end
+        Nothing -> return ()
 
 
 -- -----
@@ -338,7 +336,7 @@ highlightRemoveAll buffer = do
 -- -----
 
 -- | Saves given marks to the IDE state.
-saveMarks :: (Maybe (EditorMark, EditorMark), [(EditorMark, EditorMark)], EditorMark, EditorMark) -> IDEAction
+saveMarks :: Maybe ((EditorMark, EditorMark), [(EditorMark, EditorMark)], EditorMark, EditorMark) -> IDEAction
 saveMarks marks = do
     modifyIDE_ $ \ide -> ide{argsHelperMarks = marks}
     return ()

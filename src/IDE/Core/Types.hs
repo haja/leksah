@@ -166,7 +166,7 @@ data IDE            =  IDE {
 ,   runningTool     ::   Maybe ProcessHandle
 ,   debugState      ::   Maybe (IDEPackage, ToolState)
 ,   completion      ::   ((Int, Int), Maybe CompletionWindow)
-,   argsHelperMarks ::   (Maybe (EditorMark, EditorMark), [(EditorMark, EditorMark)], EditorMark, EditorMark)
+,   argsHelperMarks ::   Maybe ((EditorMark, EditorMark), [(EditorMark, EditorMark)], EditorMark, EditorMark)
 ,   argsHelperConnections :: Connections
 ,   argsHelperMethodDecls :: (Maybe String, [String])
 ,   argsHelperMethodDescs :: (Maybe String, [String])
