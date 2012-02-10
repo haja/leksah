@@ -17,30 +17,22 @@ module IDE.ArgumentHelper (
 ) where
 import Prelude hiding(getChar, getLine)
 
-import Data.List as List (stripPrefix, isPrefixOf, filter)
 import Data.Char
-import qualified Data.ByteString.Char8 as Char8
+import qualified Data.ByteString.Char8 as Char8 (unpack)
 import Data.Maybe (fromJust, isJust)
-import Data.IORef
 import Control.Monad
 import Control.Monad.Trans (liftIO)
-import Graphics.UI.Gtk.SourceView (SourceView)
 import qualified Graphics.UI.Gtk as Gtk hiding(onKeyPress, onKeyRelease)
 import Graphics.UI.Gtk (AttrOp (..)) -- import := unqualified for convenience
 import Graphics.UI.Gtk.Gdk.EventM as Gtk
-import IDE.Core.State
 
+import IDE.Core.State
 import qualified IDE.Metainfo.Provider as MetaInfoProvider
 import qualified IDE.Core.CTypes as CTypes
-import Data.Maybe (fromMaybe)
-
-import Control.Monad.Reader.Class (ask)
 import IDE.TextEditor
 
 import qualified IDE.ArgumentHelper.Parser as Parser
-import IDE.Core.Types (argsHelperMarks, argsHelperConnections)
-import IDE.CompletionHelper
-    (getIsWordChar, replaceWordStart, findWordStart, findWordEnd, longestCommonPrefix)
+import IDE.Core.Types
 
 
 
@@ -397,87 +389,3 @@ printMarks buf (start, end) = do
         endPos <- getOffset endI
         liftIO $ putStrLn $ "marks: start, end" ++ (show startPos) ++ ", " ++ (show endPos)
         return ()
-
-
---placeWindow :: Window -> EditorView -> IDEAction
---placeWindow window sourceView = do
---    buffer <- getBuffer sourceView
---    (selStart, end) <- getSelectionBounds buffer
---    isWordChar <- getIsWordChar sourceView
---    start <- findWordStart selStart isWordChar
---    currentWordStart <- getText buffer start end True
---    newWordStart <- do
---        if selectLCP && currentWordStart == wordStart && (not $ null options)
---            then do
---                let lcp = foldl1 longestCommonPrefix options
---                return lcp
---            else
---                return currentWordStart
---
---    when (isPrefixOf wordStart newWordStart) $ do
---        -- refill listStore with new completion possibilities/options
---        liftIO $ listStoreClear store
---        let newOptions = List.filter (isPrefixOf newWordStart) options
---        liftIO $ forM_ (take 200 newOptions) (listStoreAppend store)
---
---        Just namesSW                         <- liftIO $ widgetGetParent tree
---        (widthNamesWidget, _)                          <- liftIO $ widgetGetSize namesSW
---        Just paned                           <- liftIO $ widgetGetParent namesSW
---        Just first                           <- liftIO $ panedGetChild1 (castToPaned paned)
---        Just second                          <- liftIO $ panedGetChild2 (castToPaned paned)
---
---        Rectangle iterBufferX iterBufferY width height  <- getIterLocation sourceView start
---        (wWindow, hWindow)                              <- liftIO $ windowGetSize window
---        (iterWindowRelativeX, iterWindowRelativeY)      <- bufferToWindowCoords sourceView (iterBufferX, iterBufferY+height)
---        drawWindow                                      <- getDrawWindow sourceView
---        (windowOriginX, windowOriginY)                  <- liftIO $ drawWindowGetOrigin drawWindow
---
---        let iterAbsoluteX = windowOriginX + iterWindowRelativeX
---            iterAbsoluteY = windowOriginY + iterWindowRelativeY
---        screen                               <- liftIO $ windowGetScreen window
---        monitor                              <- liftIO $ screenGetMonitorAtPoint screen (iterAbsoluteX) (iterAbsoluteY)
---        monitorLeft                          <- liftIO $ screenGetMonitorAtPoint screen (iterAbsoluteX - wWindow + widthNamesWidget) (iterAbsoluteY)
---        monitorRight                         <- liftIO $ screenGetMonitorAtPoint screen (iterAbsoluteX + wWindow) (iterAbsoluteY)
---        monitorBelow                         <- liftIO $ screenGetMonitorAtPoint screen (iterAbsoluteX) (iterAbsoluteY + hWindow)
---        wScreen                              <- liftIO $ screenGetWidth screen
---        hScreen                              <- liftIO $ screenGetHeight screen
---
---        top <- if monitorBelow /= monitor || (iterAbsoluteY+hWindow) > hScreen
---            -- calculate Y position of the window after scrolling
---            then do
---                -- scroll text buffer to be able to show the whole window at the correct text position
---                sourceSW        <- getScrolledWindow sourceView
---                (_, hSource)    <- liftIO $ widgetGetSize sourceSW
---                scrollToIter sourceView end 0.1 (Just (1.0, 1.0 - (fromIntegral hWindow / fromIntegral hSource)))
---                (_, newY)       <- bufferToWindowCoords sourceView (iterBufferX, iterBufferY + height)
---                return (windowOriginY + newY)
---            else return (iterAbsoluteY)
---
---        swap <- if (monitorRight /= monitor || (iterAbsoluteX + wWindow) > wScreen) && monitorLeft == monitor && (iterAbsoluteX - wWindow + widthNamesWidget) > 0
---            -- reposition the completion window
---            -- calculate if swap of the two panes is needed
---            -- (if completion window is too far on the right of the screen, so the whole window can be shown)
---            then do
---                liftIO $ windowMove window (iterAbsoluteX - wWindow + widthNamesWidget) top
---                return $ first == namesSW
---            else do
---                liftIO $ windowMove window (iterAbsoluteX) top
---                return $ first /= namesSW
---
---        when swap $ liftIO $ do
---
---            pos <- panedGetPosition (castToPaned paned)
---            containerRemove (castToPaned paned) first
---            containerRemove (castToPaned paned) second
---            panedAdd1 (castToPaned paned) second
---            panedAdd2 (castToPaned paned) first
---            panedSetPosition (castToPaned paned) (wWindow - pos)
---
---        when (not $ null newOptions) $ liftIO $ treeViewSetCursor tree [0] Nothing
---
---        liftIO $ widgetShowAll window
---
---    when (newWordStart /= currentWordStart) $
---        replaceWordStart sourceView isWordChar newWordStart
-
-
