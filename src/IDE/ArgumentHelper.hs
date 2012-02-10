@@ -233,7 +233,6 @@ addArgumentsToSourceView' buffer argTypes = do
 
     doInsert <- readIDE argsHelperDoInsertArguments
     when doInsert (do
-
         marksListList <- mapM (insertArgument buffer " ") argTypes
         let marksList = foldl (++) [] marksListList -- flatten lists
         case (marksList) of
@@ -269,8 +268,10 @@ insertArgument _ _ _ = return []
 
 removeArgumentsFromSourceView :: EditorBuffer -> IDEAction
 removeArgumentsFromSourceView buffer = do
-    (_, _, start, end) <- readIDE argsHelperMarks
-    deleteBetweenMarks buffer start end
+    doInsert <- readIDE argsHelperDoInsertArguments
+    when doInsert (do
+        (_, _, start, end) <- readIDE argsHelperMarks
+        deleteBetweenMarks buffer start end)
 
 
 -- -----
