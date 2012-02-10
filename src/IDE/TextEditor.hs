@@ -92,6 +92,7 @@ module IDE.TextEditor (
 ,   backwardWordStartC
 ,   backwardToLineStartC
 ,   endsWord
+,   endsLine
 ,   forwardCharC
 ,   forwardCharsC
 ,   forwardFindCharC
@@ -815,6 +816,13 @@ backwardToLineStartC (GtkEditorIter i) = transformGtkIter i $ \new -> do
 #ifdef LEKSAH_WITH_YI
 backwardToLineStartC (YiEditorIter i) = transformYiIter i Yi.moveToSol
 #endif
+
+endsLine :: EditorIter -> IDEM Bool
+endsLine (GtkEditorIter i) = liftIO $ Gtk.textIterEndsLine i
+#ifdef LEKSAH_WITH_YI
+endsLine (YiEditorIter i) = withYiIter i -- TODO
+#endif
+
 
 endsWord :: EditorIter -> IDEM Bool
 endsWord (GtkEditorIter i) = liftIO $ Gtk.textIterEndsWord i
